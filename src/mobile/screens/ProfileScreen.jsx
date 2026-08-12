@@ -5,6 +5,9 @@ import { getAuthUser } from '@/lib/auth';
 // Avatar read/write goes through the SAME durable per-user photo store the web
 // Account Settings page uses, so a photo set on either side shows on both.
 import { saveProfilePhotoFromFile, clearProfilePhoto } from '@/lib/user-photo';
+// Name/email edits go through the same durable per-user store, so they survive
+// a re-login and show on the web app too.
+import { saveProfileEdits, getProfileFields } from '@/lib/user-profile';
 
 const BTN_BACK = { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: T.radiusFull, width: 32, height: 32, cursor: 'pointer', color: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
 
@@ -17,10 +20,13 @@ function initials(name) {
 
 export function ProfileScreen({ nav, onLogout }) {
   const user = getAuthUser();
-  const name  = user?.name  ?? 'Guest User';
-  const email = user?.email ?? '—';
-  const role  = user?.role  ?? '—';
-  const userId = user?.userId ?? '—';
+  // Read through the profile store, not the session, so edits show whether or
+  // not anyone is signed in — the mobile login does not create a session.
+  const fields = getProfileFields();
+  const name  = fields.name;
+  const email = fields.email || '—';
+  const role  = fields.role   || '—';
+  const userId = fields.userId || '—';
   const isDark = nav.themeMode === 'dark';
 
   // Seeded from the web store; kept in state so the new avatar shows the
@@ -55,9 +61,47 @@ export function ProfileScreen({ nav, onLogout }) {
     setPhotoMsg('Photo removed.');
   };
 
+  // ── Editable identity fields ───────────────────────────────────────────────
+  // `name`/`email` above are re-read from the store on every render, so closing
+  // the editor is all it takes for the new values to appear everywhere here.
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '' });
+  const [editErr, setEditErr] = useState('');
+  const [editMsg, setEditMsg] = useState('');
+
+  const onStartEdit = () => {
+    setForm({ name, email: email === '—' ? '' : email });
+    setEditErr('');
+    setEditMsg('');
+    setEditing(true);
+  };
+
+  const onCancelEdit = () => {
+    setEditing(false);
+    setEditErr('');
+  };
+
+  const onSaveEdit = () => {
+    try {
+      saveProfileEdits(form);
+      setEditing(false);
+      setEditErr('');
+      // Only a signed-in edit propagates to the web app; a guest edit is local.
+      setEditMsg(user ? 'Profile updated — it shows on the web app too.' : 'Profile updated.');
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : '';
+      setEditErr(
+        reason === 'empty-name' ? 'Name cannot be empty.'
+          : reason === 'bad-email' ? 'Enter a valid email address.'
+          : "Couldn't save those changes.",
+      );
+    }
+  };
+
   const rowStyle = { display: 'flex', justifyContent: 'space-between', paddingTop: 10, paddingBottom: 10, borderTop: `1px solid ${T.border}` };
   const labelStyle = { fontSize: 12, color: T.textTertiary, fontFamily: T.fontBody };
   const valueStyle = { fontSize: 12, fontWeight: 600, color: T.textPrimary, fontFamily: T.fontBody };
+  const inputStyle = { width: '100%', boxSizing: 'border-box', marginTop: 5, border: `1px solid ${T.border}`, borderRadius: T.radiusMd, padding: '8px 10px', fontSize: 12, fontFamily: T.fontBody, outline: 'none', background: T.bgSubtle, color: T.textPrimary };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: T.bgBase, overflow: 'hidden' }}>
@@ -115,16 +159,66 @@ export function ProfileScreen({ nav, onLogout }) {
           )}
         </div>
 
-        {/* Account details */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '20px 2px 8px' }}>Account</div>
+        {/* Account details — Full Name and Email are editable in place; User ID
+            and Role come from the credential table and stay read-only. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '20px 2px 8px' }}>
+          <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Account</div>
+          {!editing && (
+            <button onClick={onStartEdit}
+              style={{ padding: '4px 12px', borderRadius: T.radiusFull, border: `1px solid ${T.border}`, background: T.bgSurface, color: T.primary, fontSize: 11, fontWeight: 700, fontFamily: T.fontBody, cursor: 'pointer' }}>
+              Edit
+            </button>
+          )}
+        </div>
         <div style={{ background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '2px 14px', boxShadow: T.shadowSm }}>
-          <div style={{ ...rowStyle, borderTop: 'none' }}>
-            <span style={labelStyle}>Full Name</span><span style={valueStyle}>{name}</span>
-          </div>
-          <div style={rowStyle}><span style={labelStyle}>Email</span><span style={valueStyle}>{email}</span></div>
+          {editing ? (
+            <>
+              <div style={{ ...rowStyle, borderTop: 'none', display: 'block' }}>
+                <label style={labelStyle} htmlFor="profile-name">Full Name</label>
+                <input id="profile-name" type="text" value={form.name} placeholder="Your full name"
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  style={inputStyle} />
+              </div>
+              <div style={{ ...rowStyle, display: 'block' }}>
+                <label style={labelStyle} htmlFor="profile-email">Email</label>
+                <input id="profile-email" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off"
+                  value={form.email} placeholder="name@usbair.com"
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  style={inputStyle} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ ...rowStyle, borderTop: 'none' }}>
+                <span style={labelStyle}>Full Name</span><span style={valueStyle}>{name}</span>
+              </div>
+              <div style={rowStyle}><span style={labelStyle}>Email</span><span style={valueStyle}>{email || '—'}</span></div>
+            </>
+          )}
           <div style={rowStyle}><span style={labelStyle}>User ID</span><span style={valueStyle}>{userId}</span></div>
           <div style={rowStyle}><span style={labelStyle}>Role</span><span style={valueStyle}>{role}</span></div>
+
+          {editing && (
+            <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12, paddingBottom: 12 }}>
+              {editErr && (
+                <div style={{ fontSize: 11, color: T.statusRejected, fontFamily: T.fontBody, marginBottom: 8 }}>{editErr}</div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={onSaveEdit}
+                  style={{ flex: 1, padding: '9px 0', borderRadius: T.radiusMd, border: 'none', background: T.buttonGradient, color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: T.fontBody, cursor: 'pointer' }}>
+                  Save Changes
+                </button>
+                <button onClick={onCancelEdit}
+                  style={{ flex: 1, padding: '9px 0', borderRadius: T.radiusMd, border: `1px solid ${T.border}`, background: T.bgSurface, color: T.textSecondary, fontSize: 12, fontWeight: 700, fontFamily: T.fontBody, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+        {!editing && editMsg && (
+          <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, margin: '8px 2px 0' }}>{editMsg}</div>
+        )}
 
         {/* Appearance */}
         <div style={{ fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '20px 2px 8px' }}>Appearance</div>

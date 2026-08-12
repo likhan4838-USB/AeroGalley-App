@@ -5,6 +5,12 @@ const AUTH_KEY = "harvest-auth-v1";
 // photo kept only there would vanish on the next sign-in. Keyed by userId here,
 // it survives logout/login and is re-hydrated onto the session by getAuthUser().
 const PHOTO_KEY = "harvest-user-photos-v1";
+// User-edited profile fields (name / email) live in their own durable per-user
+// store for exactly the same reason photos do: the session object above is
+// replaced wholesale on every login with the credential-table user, so an edit
+// kept only there would be lost on the next sign-in. Keyed by userId, it is
+// re-applied onto the session by getAuthUser().
+const PROFILE_KEY = "harvest-user-profiles-v1";
 
 export type AuthUser = {
   userId: string;
@@ -41,6 +47,35 @@ export function setStoredPhoto(userId: string, dataUrl: string | undefined): voi
   }
 }
 
+/** Fields a user may change about themselves. Role/userId are never editable. */
+export type ProfileEdits = { name?: string; email?: string };
+
+function readProfileMap(): Record<string, ProfileEdits> {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, ProfileEdits>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The durably-stored profile edits for a user, independent of the session. */
+export function getStoredProfile(userId: string): ProfileEdits | undefined {
+  return readProfileMap()[userId];
+}
+
+/** Persist (or, with `undefined`, clear) a user's profile edits. */
+export function setStoredProfile(userId: string, edits: ProfileEdits | undefined): void {
+  const map = readProfileMap();
+  if (edits && (edits.name || edits.email)) map[userId] = edits;
+  else delete map[userId];
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(map));
+  } catch {
+    /* quota — ignore */
+  }
+}
+
 export function getAuthUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
@@ -49,6 +84,11 @@ export function getAuthUser(): AuthUser | null {
     // Migrate legacy role label so sessions created before the rename show the
     // current title without forcing a re-login.
     if (user.role === "GM/Admin") user.role = "Business Analyst";
+    // Re-apply any name/email the user edited on their profile, for the same
+    // reason as the photo below: a fresh login writes the credential-table user.
+    const edits = getStoredProfile(user.userId);
+    if (edits?.name) user.name = edits.name;
+    if (edits?.email) user.email = edits.email;
     // Re-hydrate the avatar from the durable per-user store so it survives a
     // fresh login (which writes a session object with no photo).
     const durablePhoto = getStoredPhoto(user.userId);
