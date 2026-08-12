@@ -1,0 +1,831 @@
+import { useSyncExternalStore } from "react";
+import {
+  seedFlightOrders,
+  seedCrewOrders,
+  isDomesticSector,
+  type FlightOrderRow,
+  type FlightOrderStatus,
+} from "@/lib/sample-data";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flight-orders store — single source of truth for the Order Management page
+// AND the dashboard's "Active Orders" panel (and any other surface that needs
+// to react to order create / edit / status-advance events).
+//
+// The seeded data is huge (~3k rows after the procedural generator) so we do
+// NOT persist the whole list to localStorage. Instead we persist only the
+// delta — orders the user creates this session — and merge them on top of the
+// seed on load. This keeps created orders alive across reloads without bloating
+// storage. (Status/edit changes to those created orders are persisted too,
+// since the delta is recomputed from the live list on every mutation.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type FlightOrder = FlightOrderRow;
+
+const ADDED_KEY = "harvest-data-v1:flight-orders-added";
+
+function loadAddedOrders(): FlightOrder[] {
+  try {
+    const raw = window.localStorage.getItem(ADDED_KEY);
+    if (raw) return JSON.parse(raw) as FlightOrder[];
+  } catch {
+    /* unavailable / corrupt — start empty */
+  }
+  return [];
+}
+
+function saveAddedOrders() {
+  try {
+    const added = current.filter((o) => addedIds.has(o.id));
+    window.localStorage.setItem(ADDED_KEY, JSON.stringify(added));
+  } catch {
+    /* quota / serialization errors are non-fatal */
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amendment overlay — Last-Minute Changes (LMC) foundation.
+//
+// Every substantive edit to an order is recorded as an append-only *amendment*
+// (a field-level diff + who/when/why), instead of being silently overwritten.
+// The overlay also persists each order's accumulated head edits keyed by id —
+// which is what makes edits to SEED orders survive a reload (the added-orders
+// delta above only covers orders created in-app).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AMEND_KEY = "harvest-data-v1:flight-order-amendments";
+
+/** Default lead time (hours before ETD) at or under which an edit counts as a
+ *  Last-Minute Change. The live value is configurable — see getLmcWindowHours;
+ *  this constant is only the fallback when nothing is stored. */
+export const LMC_WINDOW_HOURS = 4;
+
+const LMC_WINDOW_KEY = "harvest-data-v1:lmc-window-hours";
+
+/** The active LMC cut-off in hours, read live so the setting takes effect
+ *  without a reload. Falls back to the default; clamped to a sane range. */
+export function getLmcWindowHours(): number {
+  try {
+    const raw = window.localStorage.getItem(LMC_WINDOW_KEY);
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) return Math.min(48, Math.max(0.25, n));
+    }
+  } catch {
+    /* unavailable / corrupt — fall through to default */
+  }
+  return LMC_WINDOW_HOURS;
+}
+
+/** Persist the LMC cut-off (hours). Clamped to 0.25–48h. */
+export function setLmcWindowHours(hours: number): void {
+  const n = Math.min(48, Math.max(0.25, Number(hours) || LMC_WINDOW_HOURS));
+  try { window.localStorage.setItem(LMC_WINDOW_KEY, String(n)); } catch { /* quota — non-fatal */ }
+  notify();
+}
+
+export type LmcSeverity = "info" | "minor" | "major" | "critical";
+
+/** One changed field within an amendment. */
+export type FieldChange = { field: string; label: string; from: unknown; to: unknown };
+
+/** A single recorded edit to an order — the unit of the revision history. */
+export type OrderAmendment = {
+  id: string;          // AMD-<base36>-<seq>
+  orderId: string;
+  at: string;          // ISO timestamp
+  by: string;
+  role: string;
+  reason: string;
+  changes: FieldChange[];
+  /** Hours from edit time to scheduled departure (negative ⇒ already departed);
+   *  null when date/ETD couldn't be parsed. */
+  leadHours: number | null;
+  /** True when edited at/under the LMC window — a Last-Minute Change. */
+  isLmc: boolean;
+  severity: LmcSeverity;
+};
+
+// Fields whose change materially affects production / loading (vs. a label fix).
+const HIGH_IMPACT_FIELDS = new Set(["etd", "date", "pax", "crew", "specialMeals"]);
+
+/** Hours from now until an order's scheduled departure; null if unparseable. */
+export function leadHoursToDeparture(o: Pick<FlightOrder, "date" | "etd">): number | null {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(o.date);
+  const t = /^(\d{1,2}):(\d{2})/.exec(o.etd);
+  if (!d || !t) return null;
+  const dep = new Date(Number(d[1]), Number(d[2]) - 1, Number(d[3]), Number(t[1]), Number(t[2]));
+  if (Number.isNaN(dep.getTime())) return null;
+  return (dep.getTime() - Date.now()) / 3_600_000;
+}
+
+/** True when a lead time falls inside the LMC window: at or under the cutoff
+ *  AND not already departed. A negative lead time means the flight has already
+ *  left — that's a post-departure correction, not a *last-minute* change, so it
+ *  must not be flagged LMC (otherwise editing any historical flight today would
+ *  pollute the dashboard's "changes today" count and the LMC filter). */
+export function isLmcLead(leadHours: number | null): boolean {
+  return leadHours != null && leadHours >= 0 && leadHours <= getLmcWindowHours();
+}
+
+/** True once the flight's scheduled departure has passed — the order is "Flown".
+ *  Used to lock the order's figures from editing after departure (the as-flown
+ *  record must not be silently mutated). Unparseable date/ETD ⇒ not locked. */
+export function hasDeparted(o: Pick<FlightOrder, "date" | "etd">): boolean {
+  const lead = leadHoursToDeparture(o);
+  return lead != null && lead < 0;
+}
+
+function classifyAmendment(
+  changes: FieldChange[],
+  leadHours: number | null,
+): { isLmc: boolean; severity: LmcSeverity } {
+  const isLmc = isLmcLead(leadHours);
+  const highImpact = changes.some((c) => HIGH_IMPACT_FIELDS.has(c.field));
+  const severity: LmcSeverity = isLmc
+    ? (highImpact ? "critical" : "major")
+    : (highImpact ? "minor" : "info");
+  return { isLmc, severity };
+}
+
+type OrderOverlay = { head: Partial<FlightOrder>; revisions: OrderAmendment[] };
+
+// Only these fields are tracked in the diff / labelled in the history timeline.
+const TRACKED_FIELDS: Record<string, string> = {
+  flight: "Flight",
+  airline: "Airline",
+  sector: "Sector",
+  date: "Date",
+  etd: "ETD",
+  direction: "Direction",
+  pax: "PAX",
+  crew: "Crew",
+  specialMeals: "Special Meals",
+  status: "Status",
+};
+
+function loadOverlay(): Map<string, OrderOverlay> {
+  try {
+    const raw = window.localStorage.getItem(AMEND_KEY);
+    if (raw) return new Map(Object.entries(JSON.parse(raw) as Record<string, OrderOverlay>));
+  } catch {
+    /* unavailable / corrupt — start empty */
+  }
+  return new Map();
+}
+
+function saveOverlay() {
+  try {
+    window.localStorage.setItem(AMEND_KEY, JSON.stringify(Object.fromEntries(overlay)));
+  } catch {
+    /* quota / serialization errors are non-fatal */
+  }
+}
+
+function ensureOverlay(id: string): OrderOverlay {
+  let o = overlay.get(id);
+  if (!o) { o = { head: {}, revisions: [] }; overlay.set(id, o); }
+  return o;
+}
+
+/** Persist a seed order's head edit so it survives reload (added orders persist
+ *  via the added-delta instead, so their overlay head stays empty). */
+function recordHeadOverlay(id: string, patch: Partial<FlightOrder>) {
+  const o = ensureOverlay(id);
+  o.head = { ...o.head, ...patch };
+  saveOverlay();
+}
+
+function pushRevision(rev: OrderAmendment) {
+  const o = ensureOverlay(rev.orderId);
+  o.revisions = [rev, ...o.revisions];
+  saveOverlay();
+}
+
+function diffFields(before: FlightOrder, patch: Partial<FlightOrder>): FieldChange[] {
+  const out: FieldChange[] = [];
+  for (const key of Object.keys(patch)) {
+    const label = TRACKED_FIELDS[key];
+    if (!label) continue;
+    const from = (before as Record<string, unknown>)[key];
+    const to = (patch as Record<string, unknown>)[key];
+    if (from === to) continue;
+    out.push({ field: key, label, from, to });
+  }
+  return out;
+}
+
+let amendSeq = 0;
+
+/** The revision history for an order, newest first. */
+export function getOrderAmendments(id: string): OrderAmendment[] {
+  return overlay.get(id)?.revisions ?? [];
+}
+
+/** Every recorded amendment across all orders, newest first. */
+export function getAllAmendments(): OrderAmendment[] {
+  const out: OrderAmendment[] = [];
+  for (const ov of overlay.values()) out.push(...ov.revisions);
+  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+// One-time migration: align crew orders to share their date's flight Order #.
+// Data created before crew/flight shared a number kept separate Order #s; this
+// re-points each persisted crew order to the flight order's number for the same
+// date — but only when that date has a SINGLE distinct flight Order # (so the
+// match is unambiguous). Returns the same array reference when nothing changed.
+//
+// Scope guard: ONLY system-minted numbers (ORD-…) are ever rewritten. An Order #
+// that came off the customer's sheet (bulk upload "Order Ref", e.g. USB-4471)
+// is the customer's document number — the one identity this field exists to
+// preserve — so the migration must never overwrite it with a date's number.
+const isSystemOrderNo = (no: string) => /^ORD-\d+$/i.test(no);
+
+function migrateCrewOrderNos(added: FlightOrder[]): FlightOrder[] {
+  const flightNosByDate = new Map<string, Set<string>>();
+  for (const o of added) {
+    if ((o.orderType ?? "flight") === "crew") continue;
+    let set = flightNosByDate.get(o.date);
+    if (!set) { set = new Set(); flightNosByDate.set(o.date, set); }
+    set.add(o.orderNo);
+  }
+  let changed = false;
+  const next = added.map((o) => {
+    if (o.orderType !== "crew") return o;
+    if (!isSystemOrderNo(o.orderNo)) return o; // customer ref — keep verbatim
+    const set = flightNosByDate.get(o.date);
+    if (set && set.size === 1) {
+      const target = [...set][0];
+      if (target !== o.orderNo) { changed = true; return { ...o, orderNo: target }; }
+    }
+    return o;
+  });
+  return changed ? next : added;
+}
+
+// One-time migration: fold crew orders into their matching flight order. A crew
+// order (orderType "crew") that shares a flight + date + direction with a flight
+// order is redundant now that flight orders carry their own crew count — so we
+// copy its crew onto the flight order (latest crew wins) and drop the crew row.
+// Crew orders with NO matching flight order are kept as-is (crew-only flights).
+function migrateCrewMerge(added: FlightOrder[]): FlightOrder[] {
+  const isFlight = (o: FlightOrder) => (o.orderType ?? "flight") !== "crew";
+  const key = (o: FlightOrder) => `${o.flight}|${o.date}|${o.direction}`;
+
+  const flightKeys = new Set<string>();
+  for (const o of added) if (isFlight(o)) flightKeys.add(key(o));
+
+  // Latest crew value per flight key, taken from crew orders that have a match.
+  const crewByKey = new Map<string, { crew: number; at: number }>();
+  for (const o of added) {
+    if (isFlight(o)) continue;
+    const k = key(o);
+    if (!flightKeys.has(k)) continue; // no match → leave it standalone
+    const at = o.createdAt ?? 0;
+    const prev = crewByKey.get(k);
+    if (!prev || at >= prev.at) crewByKey.set(k, { crew: o.crew ?? 0, at });
+  }
+  if (crewByKey.size === 0) return added;
+
+  const next: FlightOrder[] = [];
+  for (const o of added) {
+    if (isFlight(o)) {
+      const merged = crewByKey.get(key(o));
+      next.push(merged ? { ...o, crew: merged.crew } : o);
+    } else if (!flightKeys.has(key(o))) {
+      next.push(o); // standalone crew order — keep
+    }
+    // else: crew order merged into its flight order → drop
+  }
+  return next;
+}
+
+// ── LMC-testable orders ───────────────────────────────────────────────────────
+// The seeded order book is anchored to a fixed demo date (2026-06-01), so against
+// the real clock every "upcoming" flight is either already departed (edit locked)
+// or too far out to count as a Last-Minute Change. That leaves no editable flight
+// inside the LMC window, so the LMC flow can't be exercised by editing an order.
+// These few orders depart a couple of hours from *now* (recomputed each load) —
+// editable AND in-window — so amending their PAX/meals immediately flags an LMC
+// and surfaces it on the LMC control tower. Not persisted (regenerated per load);
+// edits still persist via the amendment overlay like any seed order.
+function makeInWindowDemoOrders(): FlightOrder[] {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const etdIn = (mins: number) => {
+    const t = new Date(now.getTime() + mins * 60_000);
+    return `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  };
+  // Stamp createdAt so these sort to the top of Order Management (latest first),
+  // above the far-future seed rows. Decreasing so leg 1 leads its order group.
+  const t = now.getTime();
+  return [
+    { id: "FO-LMC-1", orderNo: "ORD-9101", flight: "BS-901", airline: "US-Bangla", sector: "DAC → DXB", date: dateStr, etd: etdIn(90),  pax: 168, crew: 8,  specialMeals: 10, status: "Approved", direction: "Outbound", createdAt: t },
+    { id: "FO-LMC-2", orderNo: "ORD-9101", flight: "BS-902", airline: "US-Bangla", sector: "DXB → DAC", date: dateStr, etd: etdIn(150), pax: 160, crew: 8,  specialMeals: 8,  status: "Approved", direction: "Return",   createdAt: t - 1 },
+    { id: "FO-LMC-3", orderNo: "ORD-9102", flight: "BG-905", airline: "Air Astra", sector: "DAC → KUL", date: dateStr, etd: etdIn(210), pax: 182, crew: 12, specialMeals: 14, status: "Approved", direction: "Outbound", createdAt: t - 2 },
+  ];
+}
+
+const overlay = loadOverlay();
+const rawAdded = loadAddedOrders();
+const persistedAdded = migrateCrewMerge(migrateCrewOrderNos(rawAdded));
+const addedIds = new Set<string>(persistedAdded.map((o) => o.id));
+// Persisted creates take precedence over (and sit above) the seed snapshot.
+// Then re-apply each order's persisted head edits (LMC amendments) so edits to
+// SEED orders survive a reload — the added-delta only covers created orders.
+let current: FlightOrder[] = [...makeInWindowDemoOrders(), ...persistedAdded, ...seedFlightOrders, ...seedCrewOrders].map((o) => {
+  const ov = overlay.get(o.id);
+  return ov && Object.keys(ov.head).length ? { ...o, ...ov.head } : o;
+});
+const listeners = new Set<() => void>();
+// If the migration re-aligned any crew Order #, persist the aligned set so the
+// fix sticks across reloads (no-op when nothing changed).
+if (persistedAdded !== rawAdded) saveAddedOrders();
+
+// ── Demo LMC amendments ───────────────────────────────────────────────────────
+// The seed order book is historical (past-dated → departed), so out of the box
+// nothing is "in-window" and the LMC control tower reads empty. These synthetic,
+// stable-id revisions represent last-minute changes made against today's flights
+// while they were still in-window — enough to populate the LMC page, dashboard
+// banner and production banner. History-only: we intentionally do NOT apply them
+// as head edits, so order figures on other pages are left untouched.
+const DEMO_AMENDMENTS: OrderAmendment[] = [
+  {
+    id: "AMD-DEMO-1", orderId: "FO-007", at: "2026-07-06T04:35:00.000Z",
+    by: "R. Hossain", role: "Business Analyst", reason: "Airline sent revised final figures",
+    changes: [
+      { field: "pax", label: "PAX", from: 168, to: 130 },
+      { field: "specialMeals", label: "Special Meals", from: 10, to: 16 },
+    ],
+    leadHours: 2.3, isLmc: true, severity: "critical",
+  },
+  {
+    id: "AMD-DEMO-2", orderId: "FO-008", at: "2026-07-06T05:10:00.000Z",
+    by: "S. Karim", role: "Operations Manager", reason: "Extra SPML/VGML requested by airline",
+    changes: [{ field: "specialMeals", label: "Special Meals", from: 22, to: 30 }],
+    leadHours: 1.2, isLmc: true, severity: "critical",
+  },
+  {
+    id: "AMD-DEMO-3", orderId: "FO-225", at: "2026-07-06T03:50:00.000Z",
+    by: "M. Jahangir", role: "Catering Supervisor", reason: "ATC slot delay — STD pushed",
+    changes: [{ field: "etd", label: "ETD", from: "15:40", to: "17:10" }],
+    leadHours: 3.6, isLmc: true, severity: "critical",
+  },
+  {
+    id: "AMD-DEMO-4", orderId: "FO-004", at: "2026-07-06T06:05:00.000Z",
+    by: "R. Hossain", role: "Business Analyst", reason: "Re-routed via alternate hub",
+    changes: [{ field: "sector", label: "Sector", from: "DAC → KUL", to: "DAC → SIN" }],
+    leadHours: 2.9, isLmc: true, severity: "major",
+  },
+];
+for (const rev of DEMO_AMENDMENTS) {
+  const ov = ensureOverlay(rev.orderId);
+  // Record the revision once (history).
+  if (!ov.revisions.some((r) => r.id === rev.id)) ov.revisions = [rev, ...ov.revisions];
+  // Apply the change to the order itself so downstream consumers (production
+  // requirement recompute, dispatch re-sync) see the amended figures — how a real
+  // amendOrder behaves. Applied every load (idempotent — sets to the same "to"
+  // value) so the demo holds even when the revision was persisted head-less.
+  const patch: Record<string, unknown> = {};
+  for (const c of rev.changes) patch[c.field] = c.to;
+  ov.head = { ...ov.head, ...patch };
+  current = current.map((o) => (o.id === rev.orderId ? { ...o, ...patch } : o));
+}
+
+function notify() {
+  for (const l of listeners) l();
+}
+
+export function getFlightOrders(): FlightOrder[] {
+  return current;
+}
+
+export function setFlightOrders(next: FlightOrder[]) {
+  current = next;
+  saveAddedOrders();
+  notify();
+}
+
+/** Prepends new orders (UI convention: newest first). */
+export function addFlightOrders(orders: FlightOrder[]) {
+  for (const o of orders) addedIds.add(o.id);
+  current = [...orders, ...current];
+  saveAddedOrders();
+  notify();
+}
+
+/** Replaces a single order by id; no-op if not found. */
+export function updateFlightOrder(id: string, patch: Partial<FlightOrder>) {
+  let changed = false;
+  const next = current.map((o) => {
+    if (o.id !== id) return o;
+    changed = true;
+    return { ...o, ...patch };
+  });
+  if (changed) {
+    current = next;
+    // Added orders persist via the added-delta; seed orders persist their head
+    // edit through the amendment overlay so the change survives a reload.
+    if (addedIds.has(id)) saveAddedOrders();
+    else recordHeadOverlay(id, patch);
+    notify();
+  }
+}
+
+/**
+ * Amend an order, recording the change as a versioned revision (field diff +
+ * who/when/why) before applying it — the LMC-aware path that replaces silent
+ * overwrites. Untracked-only patches still apply but log no revision. Returns
+ * the recorded amendment, or null when nothing tracked changed.
+ */
+export function amendOrder(
+  id: string,
+  patch: Partial<FlightOrder>,
+  meta: { by?: string; role?: string; reason?: string } = {},
+): OrderAmendment | null {
+  const before = current.find((o) => o.id === id);
+  if (!before) return null;
+  const changes = diffFields(before, patch);
+  let rev: OrderAmendment | null = null;
+  if (changes.length > 0) {
+    const leadHours = leadHoursToDeparture(before);
+    const { isLmc, severity } = classifyAmendment(changes, leadHours);
+    rev = {
+      id: `AMD-${Date.now().toString(36)}-${amendSeq++}`,
+      orderId: id,
+      at: new Date().toISOString(),
+      by: meta.by ?? "System",
+      role: meta.role ?? "",
+      reason: meta.reason?.trim() || "Order edited",
+      changes,
+      leadHours,
+      isLmc,
+      severity,
+    };
+    pushRevision(rev);
+  }
+  updateFlightOrder(id, patch);
+  return rev;
+}
+
+/**
+ * Whether an amendment can be safely reverted. Reverting restores a revision's
+ * `from` values; if a *newer* revision changed any of the same fields, doing so
+ * would silently clobber that later change. Block it and name the conflict so
+ * the user reverts in order (newest first). Revisions are stored newest-first.
+ */
+export function canRevertAmendment(
+  orderId: string,
+  amendmentId: string,
+): { ok: boolean; reason?: string } {
+  const revs = overlay.get(orderId)?.revisions ?? [];
+  const idx = revs.findIndex((r) => r.id === amendmentId);
+  if (idx < 0) return { ok: false, reason: "Amendment not found." };
+  const targetFields = new Set(revs[idx].changes.map((c) => c.field));
+  // Indices before idx are newer (newest-first ordering).
+  for (let i = 0; i < idx; i++) {
+    const overlap = revs[i].changes.filter((c) => targetFields.has(c.field));
+    if (overlap.length) {
+      const labels = Array.from(new Set(overlap.map((c) => c.label))).join(", ");
+      return { ok: false, reason: `A newer change to ${labels} exists — revert that first.` };
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Undo a recorded amendment by restoring each of its fields to the value it had
+ * *before* that change — itself logged as a new amendment (so the revert is
+ * auditable and re-revertable). Blocked when a newer amendment touched the same
+ * field (see canRevertAmendment). Returns the new revision, or null if not found
+ * / blocked.
+ */
+export function revertAmendment(
+  orderId: string,
+  amendmentId: string,
+  meta: { by?: string; role?: string } = {},
+): OrderAmendment | null {
+  const rev = overlay.get(orderId)?.revisions.find((r) => r.id === amendmentId);
+  if (!rev) return null;
+  if (!canRevertAmendment(orderId, amendmentId).ok) return null;
+  const patch: Record<string, unknown> = {};
+  for (const c of rev.changes) patch[c.field] = c.from;
+  return amendOrder(orderId, patch as Partial<FlightOrder>, {
+    by: meta.by ?? "System",
+    role: meta.role ?? "",
+    reason: `Reverted ${rev.id} (${rev.changes.map((c) => c.label).join(", ")})`,
+  });
+}
+
+/** Status-only mutation (the common case). */
+export function updateFlightOrderStatus(id: string, status: FlightOrderStatus) {
+  updateFlightOrder(id, { status });
+}
+
+/** Bulk replace by id-matching predicate. Used by "advance order" flows that
+ *  move every leg of an order forward together. Returns the number of rows
+ *  that matched and were patched (callers use it to surface a toast). */
+export function updateFlightOrdersWhere(
+  predicate: (o: FlightOrder) => boolean,
+  patch: Partial<FlightOrder>,
+): number {
+  let changedCount = 0;
+  const seedChanged: string[] = [];
+  const next = current.map((o) => {
+    if (!predicate(o)) return o;
+    changedCount += 1;
+    // Seed orders don't persist via the added-delta — without a head overlay
+    // their change is lost on reload (the seed-edit-loss bug, on the bulk path).
+    if (!addedIds.has(o.id)) seedChanged.push(o.id);
+    return { ...o, ...patch };
+  });
+  if (changedCount > 0) {
+    current = next;
+    saveAddedOrders();
+    for (const id of seedChanged) recordHeadOverlay(id, patch);
+    notify();
+  }
+  return changedCount;
+}
+
+export function subscribeFlightOrders(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+export function useFlightOrders(): FlightOrder[] {
+  return useSyncExternalStore(
+    (cb) => subscribeFlightOrders(cb),
+    getFlightOrders,
+    getFlightOrders,
+  );
+}
+
+// ── Mobile bridge: map the web flight-orders store into the mobile Home screen's
+// flight-row shape ────────────────────────────────────────────────────────────
+// The mobile "Next Departures" list + flight KPIs read the SAME live order store
+// the web Order Management page uses, instead of a hardcoded MOCK_FLIGHTS list.
+// The mobile UI is unchanged; only its data source is swapped.
+
+export type MobileFlight = {
+  id: string;
+  airline: string;
+  route: string;
+  departure: string;
+  status: string;
+  pax: number;
+  meals: number;
+  sector: string;
+};
+
+// Web order-lifecycle status → the mobile flight-status vocabulary its pill/colors
+// expect. (The web tracks order progress, not operational flight state, so this is
+// the closest faithful mapping; the substantive data — flights, times, pax, meals —
+// is all real.)
+const MOBILE_FLIGHT_STATUS: Record<FlightOrderStatus, string> = {
+  Pending: "scheduled",
+  Approved: "scheduled",
+  Production: "boarding",
+  Packaged: "boarding",
+  Dispatched: "departed",
+  Completed: "departed",
+  Departed: "departed",
+};
+
+/**
+ * Live flight orders rendered in the mobile Home shape, scoped to a single day's
+ * departures sorted by ETD. Picks the reference date's flights (default today);
+ * if that date has none (e.g. the seed sits in a different period), falls back to
+ * the earliest upcoming date, then to the earliest date present — so the mobile
+ * list is never empty while real data exists. Crew-meal orders are excluded (they
+ * aren't departures); each row's meals = pax + crew + special meals.
+ */
+export function loadMobileFlights(
+  refDate: string = new Date().toISOString().split("T")[0],
+): MobileFlight[] {
+  const flights = getFlightOrders().filter((o) => (o.orderType ?? "flight") !== "crew");
+  if (flights.length === 0) return [];
+
+  // Choose the day to show: today if it has departures, else the soonest future
+  // day, else the earliest day in the data.
+  const onRef = flights.filter((o) => o.date === refDate);
+  const pool = onRef.length
+    ? onRef
+    : (() => {
+        const future = flights.filter((o) => o.date >= refDate);
+        const base = future.length ? future : flights;
+        const minDate = base.reduce((m, o) => (o.date < m ? o.date : m), base[0].date);
+        return base.filter((o) => o.date === minDate);
+      })();
+
+  return pool
+    .slice()
+    .sort((a, b) => a.etd.localeCompare(b.etd))
+    .map((o) => ({
+      id: o.flight,
+      airline: o.airline,
+      route: o.sector,
+      departure: o.etd,
+      status: MOBILE_FLIGHT_STATUS[o.status] ?? "scheduled",
+      pax: o.pax,
+      meals: o.pax + (o.crew ?? 0) + (o.specialMeals ?? 0),
+      sector: isDomesticSector(o.sector) ? "Domestic" : "International",
+    }));
+}
+
+// ── Mobile "Active Orders" (mirrors the web dashboard's Active Orders panel) ───
+// Same source (live flight orders) and same shaping the web home uses: split
+// flight vs crew orders, sort active-first by lifecycle status, then group the
+// legs under their Order #. Keeps the real order numbers, flights, ETDs, pax,
+// crew and status the web shows — just projected into the mobile card shape.
+
+export type MobileOrderLeg = {
+  id: string;
+  flight: string;
+  sector: string;   // "Domestic" | "International" (like the web card's leg subtitle)
+  route: string;    // e.g. "DAC → CGP"
+  etd: string;
+  pax: number;
+  crew: number;
+  status: string;
+};
+
+export type MobileOrderGroup = {
+  orderNo: string;
+  status: string;     // the group's headline status (its first/most-active leg)
+  legs: MobileOrderLeg[];
+  totalPax: number;
+  totalCrew: number;
+};
+
+// Active-first ordering — identical priority table to the web dashboard.
+const ACTIVE_ORDER_PRIORITY: Record<string, number> = {
+  Production: 0, Packaged: 1, Approved: 2, Dispatched: 3, Pending: 4, Completed: 5, Departed: 6,
+};
+
+/**
+ * Live orders grouped for the mobile Active-Orders card. Returns both tabs
+ * (`flight` and `crew`) so the Home screen can toggle between them, each already
+ * sorted active-first and grouped by Order #, capped at `maxOrders` groups.
+ */
+export function loadMobileActiveOrders(maxOrders = 6): {
+  flight: MobileOrderGroup[];
+  crew: MobileOrderGroup[];
+} {
+  const all = getFlightOrders();
+
+  const build = (mode: "flight" | "crew"): MobileOrderGroup[] => {
+    const rows = all.filter((o) =>
+      mode === "crew"
+        ? (o.orderType ?? "flight") === "crew"
+        : (o.orderType ?? "flight") !== "crew",
+    );
+    const sorted = [...rows].sort((a, b) => {
+      const pa = ACTIVE_ORDER_PRIORITY[a.status] ?? 99;
+      const pb = ACTIVE_ORDER_PRIORITY[b.status] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return a.etd.localeCompare(b.etd);
+    });
+    const map = new Map<string, MobileOrderLeg[]>();
+    for (const o of sorted) {
+      const leg: MobileOrderLeg = {
+        id: o.id, flight: o.flight, route: o.sector,
+        sector: isDomesticSector(o.sector) ? "Domestic" : "International",
+        etd: o.etd, pax: o.pax, crew: o.crew ?? 0, status: o.status,
+      };
+      const list = map.get(o.orderNo);
+      if (list) list.push(leg);
+      else map.set(o.orderNo, [leg]);
+    }
+    return Array.from(map.entries())
+      .slice(0, maxOrders)
+      .map(([orderNo, legs]) => ({
+        orderNo,
+        status: legs[0]?.status ?? "",
+        legs,
+        totalPax: legs.reduce((s, l) => s + l.pax, 0),
+        totalCrew: legs.reduce((s, l) => s + l.crew, 0),
+      }));
+  };
+
+  return { flight: build("flight"), crew: build("crew") };
+}
+
+// ── Mobile Order Management (the full order book, not the dashboard's top-6) ──
+// The mobile Orders screen renders the SAME live order book the web Order
+// Management page manages: every order, grouped by Order # with its legs, plus
+// the per-leg amendment count so the detail view can surface the web's revision
+// history. Read-only by design — orders are raised and amended on the web; the
+// phone is for looking one up at the galley door.
+
+export type MobileOrderBookLeg = {
+  /** Store row id — the key for getOrderAmendments(). */
+  id: string;
+  flight: string;
+  route: string;
+  direction: string;      // "Outbound" | "Return"
+  date: string;
+  etd: string;
+  pax: number;
+  crew: number;
+  specialMeals: number;
+  status: FlightOrderStatus;
+  scope: "Domestic" | "International";
+  /** Hours until departure (negative once flown); null when unparseable. */
+  leadHours: number | null;
+  /** Inside the LMC window — changes from here on are last-minute changes. */
+  inLmcWindow: boolean;
+  amendmentCount: number;
+};
+
+export type MobileOrderBookGroup = {
+  orderNo: string;
+  airline: string;
+  date: string;
+  /**
+   * An order has NO status of its own — it is the intake document; the workflow
+   * entity is the leg, and legs advance independently (the web page's
+   * OrderStatusBadges rule). So the header carries the per-stage counts in
+   * lifecycle order, plus `uniformStatus` when every leg sits at one stage —
+   * the only case where a concrete status pill is honest.
+   */
+  statusCounts: { status: FlightOrderStatus; n: number }[];
+  uniformStatus: FlightOrderStatus | null;
+  legs: MobileOrderBookLeg[];
+  totalPax: number;
+  totalCrew: number;
+  totalSpecial: number;
+};
+
+/** Lifecycle order — mirrors LIFECYCLE_ORDER on the web Order Management page. */
+const LIFECYCLE_STAGES: FlightOrderStatus[] = [
+  "Pending", "Approved", "Production", "Packaged", "Dispatched", "Completed", "Departed",
+];
+
+/**
+ * The live order book grouped for the mobile Orders screen — both tabs, sorted
+ * active-first (the web dashboard's priority table) then by ETD, uncapped.
+ */
+export function loadMobileOrderBook(): {
+  flight: MobileOrderBookGroup[];
+  crew: MobileOrderBookGroup[];
+} {
+  const all = getFlightOrders();
+
+  const build = (mode: "flight" | "crew"): MobileOrderBookGroup[] => {
+    const rows = all.filter((o) =>
+      mode === "crew"
+        ? (o.orderType ?? "flight") === "crew"
+        : (o.orderType ?? "flight") !== "crew",
+    );
+    const sorted = [...rows].sort((a, b) => {
+      const pa = ACTIVE_ORDER_PRIORITY[a.status] ?? 99;
+      const pb = ACTIVE_ORDER_PRIORITY[b.status] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return a.etd.localeCompare(b.etd);
+    });
+    const map = new Map<string, { airline: string; date: string; legs: MobileOrderBookLeg[] }>();
+    for (const o of sorted) {
+      const leadHours = leadHoursToDeparture(o);
+      const leg: MobileOrderBookLeg = {
+        id: o.id,
+        flight: o.flight,
+        route: o.sector,
+        direction: o.direction,
+        date: o.date,
+        etd: o.etd,
+        pax: o.pax,
+        crew: o.crew ?? 0,
+        specialMeals: o.specialMeals ?? 0,
+        status: o.status,
+        scope: isDomesticSector(o.sector) ? "Domestic" : "International",
+        leadHours,
+        // Departed legs are past changing; the flag is for upcoming ones.
+        inLmcWindow: isLmcLead(leadHours) && !hasDeparted(o),
+        amendmentCount: getOrderAmendments(o.id).length,
+      };
+      const g = map.get(o.orderNo);
+      if (g) g.legs.push(leg);
+      else map.set(o.orderNo, { airline: o.airline, date: o.date, legs: [leg] });
+    }
+    return Array.from(map.entries()).map(([orderNo, g]) => {
+      const statusCounts = LIFECYCLE_STAGES
+        .map((status) => ({ status, n: g.legs.filter((l) => l.status === status).length }))
+        .filter((c) => c.n > 0);
+      return {
+        orderNo,
+        airline: g.airline,
+        date: g.date,
+        statusCounts,
+        uniformStatus: statusCounts.length === 1 ? statusCounts[0].status : null,
+        legs: g.legs,
+        totalPax: g.legs.reduce((s, l) => s + l.pax, 0),
+        totalCrew: g.legs.reduce((s, l) => s + l.crew, 0),
+        totalSpecial: g.legs.reduce((s, l) => s + l.specialMeals, 0),
+      };
+    });
+  };
+
+  return { flight: build("flight"), crew: build("crew") };
+}

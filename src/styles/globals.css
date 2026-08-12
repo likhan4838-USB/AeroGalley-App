@@ -1,0 +1,3584 @@
+/* Fonts (Manrope/Nunito Sans/Orbitron/Space Grotesk + Inter/Mulish) are
+   loaded via <link> in index.html so they don't block CSS parsing here. */
+
+/* ============================================================
+   Smart-HRM Design System - CSS Custom Properties
+   ============================================================ */
+
+/* Base reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ============================================================
+   Design Tokens
+   ============================================================ */
+
+:root {
+  /* --- Typography --- */
+  --font-family-base: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --hc-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --hc-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+
+  --text-xs:   11px; /* metadata, timestamps, secondary labels */
+  --text-sm:   12px; /* table cell text, captions */
+  --text-base: 13px; /* body, form fields, default Ant Design */
+  --text-md:   14px; /* section headings, emphasized body */
+  --text-lg:   16px; /* page titles */
+  --text-xl:   20px; /* dashboard KPI numbers */
+  --text-2xl:  24px; /* modal / section hero headings */
+
+  --font-regular:  400;
+  --font-medium:   500;
+  --font-semibold: 600;
+  --font-bold:     700;
+
+  --leading-tight:   1.2;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.6;
+
+  --tracking-tight:  -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide:   0.04em; /* uppercase labels */
+  --tracking-wider:  0.06em;
+
+  /* --- Brand Colors --- */
+  --color-primary:          #E10101;
+  --color-primary-dark:     #a60303;
+  --color-primary-light:    #fff0f0;
+  --color-secondary:        #a60303;
+  --color-accent:           #E10101;
+  --color-highlight:        #f59e0b;
+  /* RGB channels for rgba() usage */
+  --color-primary-rgb:      225, 1, 1;
+  --color-primary-dark-rgb: 163, 3, 3;
+  /* Tint: primary-light in light mode, subtle rgba tint in dark mode */
+  --color-primary-tint:     var(--color-primary-light);
+
+  /* --- Dashboard donut palette (Production Mix) --- */
+  --chart-track: #f0ebe8;
+  --chart-1:     #E10101;
+  --chart-2:     #7e0206;
+  --chart-3:     #d97316;
+  --chart-4:     #3c3a40;
+
+  /* --- Neutral Colors --- */
+  --color-bg-base:        #F4F5F8;
+  --color-bg-surface:     #ffffff;
+  --color-bg-subtle:      #F8FAFC;
+  --color-border:         #e5e7eb;
+  --color-border-strong:  #d1d5db;
+  --color-text-primary:   #111827;
+  --color-text-secondary: #374151;
+  --color-text-tertiary:  #6b7280;
+  --color-text-disabled:  #9ca3af;
+
+  /* --- Status Colors --- */
+  --color-status-pending:  #d97706;
+  --color-status-approved: #059669;
+  --color-status-rejected: #dc2626;
+  --color-status-draft:    #6b7280;
+  --color-status-info:     #0ea5e9;
+
+  /* --- Status Backgrounds --- */
+  --color-status-pending-bg:  #fffbeb;
+  --color-status-approved-bg: #f0fdf4;
+  --color-status-rejected-bg: #fef2f2;
+  --color-status-draft-bg:    #f9fafb;
+  --color-status-info-bg:     #f0f9ff;
+
+  /* --- Spacing Scale --- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* --- Border Radius --- */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-md: 0 6px 18px rgba(26, 2, 4, 0.08);
+  --shadow-lg: 0 18px 40px rgba(26, 2, 4, 0.12);
+
+  /* ── Harvest Catering brand tokens ──
+     Tied to the Theme Center primary so brand surfaces (CTA buttons, tiles,
+     accents) follow the selected colour instead of a fixed red. */
+  --red:        var(--color-primary, #E10101);
+  --red-bright: var(--color-primary, #ff2d2d);
+  --red-deep:   var(--color-primary-dark, #a60303);
+  --ink:        #1a0204;
+  /* NOTE: `--muted` intentionally NOT redefined here. It is the Tailwind/shadcn
+     muted *background* token (light, from index.css). Muted *text* must use
+     --muted-foreground (see below). Overriding --muted to a dark text color
+     made every `bg-muted` surface dark with invisible `text-muted-foreground`
+     labels (empty-looking pills, unreadable tab strips). */
+  --line:       #e6e2e0;
+  --paper:      #ffffff;
+  --paper-warm: #f7f3f1;
+  --serif:      'Newsreader', Georgia, 'Times New Roman', serif;
+  --sans:       'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --gradient-button: linear-gradient(120deg, var(--color-primary, #ff2d2d) 0%, var(--color-primary, #E10101) 55%, var(--color-primary-dark, #a60303) 100%);
+  --gradient-hero:   radial-gradient(120% 120% at 8% 95%, #7e0206 0%, #470206 40%, #1d0204 75%, #130103 100%);
+  --gradient-tile:   linear-gradient(150deg, var(--color-primary, #ff2d2d) 0%, var(--color-primary, #E10101) 45%, var(--color-primary-dark, #a60303) 100%);
+  --shadow-tile-glow:  0 0 0 1px rgba(255,255,255,.10), 0 10px 34px -8px rgba(var(--color-primary-rgb, 225,1,1),.75), 0 0 46px -6px rgba(var(--color-primary-rgb, 225,1,1),.55);
+  --shadow-tile-light: 0 1px 2px rgba(0,0,0,.18), 0 0 0 1px rgba(225,1,1,.10);
+}
+
+/* ============================================================
+   Base Styles
+   ============================================================ */
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--hc-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text-primary);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(var(--color-primary-rgb), 0.07) 0, rgba(var(--color-primary-rgb), 0) 44%),
+    var(--color-bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  font-family: var(--hc-sans);
+}
+
+h1, h2, h3 {
+  font-family: var(--hc-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+
+/* Ant Design headings stay sans-serif */
+.ant-typography h1,
+.ant-typography h2,
+.ant-typography h3,
+.ant-modal-title,
+.ant-drawer-title,
+.ant-card-head-title,
+.ant-table-title {
+  font-family: var(--hc-sans);
+  letter-spacing: normal;
+  line-height: var(--leading-normal);
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure Ant Design components inherit the font */
+.ant-layout,
+.ant-menu,
+.ant-breadcrumb,
+.ant-table,
+.ant-modal,
+.ant-input,
+.ant-select,
+.ant-btn,
+.ant-typography {
+  font-family: inherit;
+}
+
+/* Sidebar styles live in src/layouts/AppLayout/Sidebar.css */
+
+.ant-motion-collapse-legacy-active,
+.ant-motion-collapse-legacy-appear-active,
+.ant-motion-collapse-legacy-enter-active,
+.ant-motion-collapse-legacy-leave-active,
+.ant-motion-collapse-active,
+.ant-motion-collapse-appear-active,
+.ant-motion-collapse-enter-active,
+.ant-motion-collapse-leave-active {
+  transition: height 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.32s ease !important;
+}
+
+/* Stagger child rows in slightly as the panel opens */
+.app-topbar-shell {
+  background: #ffffff;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.app-global-search .ant-input-affix-wrapper {
+  border-radius: var(--radius-lg);
+  border-color: rgba(var(--color-primary-rgb), 0.35);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.app-global-search .ant-input-affix-wrapper:hover,
+.app-global-search .ant-input-affix-wrapper-focused {
+  border-color: var(--color-accent);
+}
+
+.app-global-search .ant-input {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.app-global-search .ant-select-dropdown {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+}
+
+/* ============================================================
+   App Layout Navigation Redesign
+   ============================================================ */
+
+.app-layout-shell {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--color-primary-rgb), 0.06), transparent 42%),
+    #F4F5F8;
+}
+
+.app-main-shell {
+  background: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Vizyon brand — shared wordmark treatment for shell and sign-in page
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.vizyon-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.vizyon-wordmark-main {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 45%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 8px 28px rgba(var(--color-primary-rgb), 0.14);
+}
+
+.vizyon-wordmark-accent {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d97706;
+}
+
+.vizyon-wordmark-main {
+  font-size: 30px;
+}
+
+.vizyon-wordmark-accent {
+  font-size: 13px;
+  transform: translateY(-2px);
+}
+
+.vizyon-subtitle {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-top: 4px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── Logo animations ─────────────────────────────────────────── */
+.vizyon-mark {
+  position: relative;
+  overflow: visible;
+}
+.vizyon-mark::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(var(--color-primary-rgb), 0.55) 0%,
+    transparent 70%
+  );
+  filter: blur(6px);
+  opacity: 0.55;
+  z-index: -1;
+  animation: vizyon-glow 3.2s ease-in-out infinite alternate;
+}
+
+.vizyon-orbit {
+  transform-origin: 16px 16px;
+  animation: vizyon-spin 9s linear infinite;
+}
+.vizyon-iris {
+  transform-origin: 16px 16px;
+  animation: vizyon-breathe 3.6s ease-in-out infinite;
+}
+.vizyon-spark {
+  transform-origin: 24px 8px;
+  animation: vizyon-spark-pop 2.8s ease-in-out infinite;
+}
+
+@keyframes vizyon-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes vizyon-breathe {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.06); opacity: 0.92; }
+}
+@keyframes vizyon-spark-pop {
+  0%, 60%, 100% { transform: translate(0, 0) scale(1);   opacity: 1; }
+  30%           { transform: translate(-1px, 1px) scale(0.85); opacity: 0.5; }
+}
+@keyframes vizyon-glow {
+  from { opacity: 0.35; }
+  to   { opacity: 0.75; }
+}
+@keyframes pipeline-panel-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vizyon-orbit,
+  .vizyon-iris,
+  .vizyon-spark,
+  .vizyon-mark::before {
+    animation: none;
+  }
+}
+
+.app-topbar-shell {
+  background: transparent;
+}
+
+.app-topbar-inner {
+  height: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(var(--color-primary-rgb), 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background:
+    linear-gradient(96deg, rgba(var(--color-primary-dark-rgb), 0.95) 0%, rgba(var(--color-primary-rgb), 0.95) 54%, rgba(var(--color-primary-rgb), 0.96) 100%),
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.13), transparent 42%);
+  box-shadow: 0 10px 26px rgba(var(--color-primary-dark-rgb), 0.26);
+}
+
+.app-topbar-left,
+.app-topbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.app-topbar-left {
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The breadcrumb must SHRINK, never wrap: Ant's <ol> is flex-wrap by default,
+   and a wrapped crumb line inherits the header's 64px line-height — so on
+   narrow laptops the trail exploded out of the bar and the clock sat on top
+   of it. Nowrap + per-crumb ellipsis keeps the bar one line at every width.
+
+   Each crumb <li> holds a link + its separator (antd v5). The li becomes a
+   flex row so the LINK can be clipped with an ellipsis while the separator
+   never shrinks — clipping the li directly left the text overflow visible,
+   and squeezed crumbs painted over each other instead of ellipsizing. */
+.app-topbar-left .ant-breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  line-height: normal;
+}
+.app-topbar-left .ant-breadcrumb ol {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.app-topbar-left .ant-breadcrumb li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.app-topbar-left .ant-breadcrumb li > .ant-breadcrumb-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-topbar-left .ant-breadcrumb li > .ant-breadcrumb-separator {
+  flex-shrink: 0;
+}
+/* Under pressure the PARENT crumbs give way first — the current page's name
+   is the one worth reading. */
+.app-topbar-left .ant-breadcrumb li:last-child {
+  flex-shrink: 0.25;
+}
+.app-topbar-toggle,
+.app-pin-toggle {
+  flex-shrink: 0;
+}
+
+.app-topbar-right {
+  gap: 8px;
+  align-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.app-time-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  border-radius: 10px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.09);
+  white-space: nowrap;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.app-time-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.app-topbar-toggle,
+.app-topbar-icon-button {
+  color: rgba(255, 255, 255, 0.82) !important;
+  border-radius: 9px !important;
+  transition: background 0.22s ease, color 0.22s ease, transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+.app-topbar-toggle .anticon,
+.app-topbar-icon-button .anticon {
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.app-topbar-toggle:hover,
+.app-topbar-icon-button:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  transform: scale(1.08);
+}
+.app-topbar-toggle:hover .anticon {
+  transform: translateX(2px);
+}
+.app-topbar-icon-button:hover .anticon {
+  transform: scale(1.1) rotate(-6deg);
+}
+.app-topbar-toggle:active,
+.app-topbar-icon-button:active {
+  transform: scale(0.94);
+}
+
+.app-pin-toggle,
+.app-recent-dropdown-button {
+  color: rgba(255, 255, 255, 0.82) !important;
+  border-radius: 9px !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(var(--color-primary-dark-rgb), 0.22) !important;
+  height: 28px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.app-pin-toggle:hover,
+.app-recent-dropdown-button:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  color: #ffffff !important;
+}
+
+.app-pin-toggle .anticon-star {
+  color: #fcd34d;
+}
+
+.app-quick-dropdown .ant-dropdown-menu {
+  min-width: 260px;
+  max-width: 300px;
+  padding: 8px;
+}
+
+.app-quick-dropdown .ant-dropdown-menu-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.app-quick-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-quick-menu-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.app-quick-menu-module {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .app-quick-menu-label {
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .app-quick-menu-module {
+  color: #64748b;
+}
+
+.app-crumb,
+.app-crumb-active {
+  cursor: pointer;
+  font-size: 12px;
+  transition: color 0.12s ease;
+}
+
+.app-crumb {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.app-crumb:hover {
+  color: #ffffff;
+}
+
+.app-crumb-active {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.app-topbar-shell .ant-breadcrumb-separator {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.header-profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 10px;
+  transition: background-color 0.12s ease;
+}
+
+.header-profile:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.header-profile-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.header-profile-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.header-profile-role {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* ── Profile chevron ─────────────────────────────────────────────────────── */
+.header-profile-chevron {
+  font-size: 10px !important;
+  color: rgba(255, 255, 255, 0.58) !important;
+  margin-left: 2px;
+  transition: transform 0.18s ease !important;
+}
+
+/* ── Topbar vertical divider ─────────────────────────────────────────────── */
+.app-topbar-divider.ant-divider-vertical {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  height: 22px !important;
+  margin: 0 4px !important;
+  align-self: center;
+}
+
+/* ── Time chip date segment ──────────────────────────────────────────────── */
+.app-time-date {
+  color: rgba(255, 255, 255, 0.62);
+  margin-left: 2px;
+}
+
+/* ── Search shortcut badge ───────────────────────────────────────────────── */
+.app-search-kbd {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #9ca3af;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 1px 5px;
+  line-height: 1.6;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+/* ── Notification panel ──────────────────────────────────────────────────── */
+.app-notif-dropdown-overlay .ant-dropdown-arrow {
+  display: none;
+}
+
+.app-notif-panel {
+  width: 320px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.app-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-notif-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.app-notif-mark-read {
+  font-size: 11px !important;
+  color: var(--color-primary) !important;
+  padding-inline: 4px !important;
+  height: auto !important;
+}
+
+.app-notif-list {
+  max-height: 290px;
+  overflow-y: auto;
+}
+
+.app-notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.app-notif-item:last-child {
+  border-bottom: none;
+}
+
+.app-notif-item:hover {
+  background: var(--color-primary-light);
+}
+
+.app-notif-item.is-read {
+  opacity: 0.55;
+}
+
+.app-notif-item.app-notif-item-pinned {
+  background: var(--color-primary-light);
+  border-left: 3px solid var(--color-primary);
+  padding-left: 11px;
+}
+
+.app-notif-item.app-notif-item-pinned:hover {
+  background: var(--color-primary-light);
+  filter: brightness(0.96);
+}
+
+.app-notif-indicator {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  margin-top: 4px;
+}
+
+.app-notif-item.is-read .app-notif-indicator {
+  background: var(--color-border-strong);
+}
+
+.app-notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-notif-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 2px;
+}
+
+.app-notif-desc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-notif-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-disabled);
+}
+
+.app-notif-footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.app-notif-view-all {
+  font-size: 12px !important;
+  color: var(--color-primary) !important;
+}
+
+/* ── Profile dropdown ────────────────────────────────────────────────────── */
+.app-profile-dropdown .ant-dropdown-menu {
+  min-width: 180px;
+  padding: 6px;
+}
+
+.app-profile-dropdown .ant-dropdown-menu-item {
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Dark mode overrides for new panel elements */
+html[data-theme="dark"] .app-notif-panel {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .app-notif-title {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .app-notif-item:hover {
+  background: rgba(var(--color-primary-rgb), 0.1);
+}
+
+html[data-theme="dark"] .app-search-kbd {
+  color: #6b7280;
+  background: #1e2535;
+  border-color: #2d3748;
+}
+
+/* Minimal topbar variant — override white-text elements */
+html[data-topbar="minimal"] .app-time-date {
+  color: var(--color-text-tertiary) !important;
+}
+
+html[data-topbar="minimal"] .app-topbar-divider.ant-divider-vertical {
+  border-color: var(--color-border) !important;
+}
+
+html[data-topbar="minimal"] .header-profile-chevron {
+  color: var(--color-text-tertiary) !important;
+}
+
+.app-content-shell {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--color-primary-rgb), 0.05), transparent 45%),
+    #F4F5F8;
+  padding: 20px 24px;
+}
+
+/* ── Theme Center: live hooks ────────────────────────────────────────────────
+   Drive sidebar colour/elevation and UI density from the Theme Center. The
+   colour family, radius, fonts, topbar & motion are handled by existing tokens
+   / data-attributes elsewhere; these three needed a hook. */
+.sb-sider.ant-layout-sider {
+  background: var(--app-sidebar-bg, #ffffff) !important;
+}
+html[data-sidebar-style="elevated"] .sb-sider.ant-layout-sider {
+  box-shadow: 6px 0 18px -6px rgba(0, 0, 0, 0.18);
+}
+html[data-density="compact"]  .app-content-shell { padding: 10px 14px; }
+html[data-density="spacious"] .app-content-shell { padding: 32px 40px; }
+
+/* ============================================================
+   TabBar — browser-style open pages strip (below content)
+   ============================================================ */
+.app-tabbar {
+  flex-shrink: 0;
+  height: 40px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 6px;
+  background: linear-gradient(180deg, rgba(var(--color-primary-rgb), 0.04) 0%, #ffffff 100%);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -1px 0 rgba(var(--color-primary-rgb), 0.03);
+  z-index: 5;
+  position: relative;
+}
+
+.app-tabbar-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 0;
+  scrollbar-width: none;           /* Firefox */
+  -ms-overflow-style: none;         /* Legacy Edge / IE */
+}
+.app-tabbar-list::-webkit-scrollbar,
+.app-tabbar-list::-webkit-scrollbar-thumb,
+.app-tabbar-list::-webkit-scrollbar-track {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+.app-tabbar-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--color-text-disabled);
+  font-style: italic;
+  user-select: none;
+}
+
+.app-tabbar-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 130px;
+  max-width: 220px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  margin-top: 4px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: rgba(var(--color-primary-rgb), 0.05);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  flex-shrink: 0;
+}
+
+.app-tabbar-tab:hover {
+  background: rgba(var(--color-primary-rgb), 0.1);
+  color: var(--color-text-secondary);
+}
+
+.app-tabbar-tab.is-active {
+  background: #ffffff;
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  border-color: var(--color-border);
+  box-shadow: 0 -2px 0 var(--color-primary) inset, 0 -1px 0 #ffffff;
+  z-index: 2;
+}
+
+.app-tabbar-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.app-tabbar-tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tabbar-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--color-text-disabled);
+  font-size: 9px;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  flex-shrink: 0;
+}
+
+.app-tabbar-tab:hover .app-tabbar-tab-close,
+.app-tabbar-tab.is-active .app-tabbar-tab-close,
+.app-tabbar-tab:focus-visible .app-tabbar-tab-close {
+  opacity: 1;
+}
+
+.app-tabbar-tab-close:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.app-tabbar-tab-close.is-disabled,
+.app-tabbar-tab-close.is-disabled:hover {
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--color-text-disabled);
+  opacity: 0.35;
+}
+
+/* ── Drag & drop reorder (dnd-kit) ── */
+.app-tabbar-tab {
+  user-select: none;
+  touch-action: none;
+}
+
+/* The item whose drag handle is active — fade the source slot; the overlay
+   renders the real floating preview. */
+.app-tabbar-tab.is-dragging {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Floating preview that follows the cursor during drag. */
+.app-tabbar-tab-overlay {
+  cursor: grabbing !important;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18),
+              0 2px 6px rgba(var(--color-primary-rgb), 0.2);
+  transform-origin: 50% 50%;
+  animation: tab-lift 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tab-lift {
+  from { transform: scale(0.96); opacity: 0.6; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+html[data-theme="dark"] .app-tabbar-tab-overlay {
+  background: #161b27;
+  border-color: #252f42;
+  color: #f1f5f9;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6),
+              0 2px 6px rgba(var(--color-primary-rgb), 0.25);
+}
+
+.app-tabbar-scroll-btn,
+.app-tabbar-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  margin-top: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 120ms ease, color 120ms ease;
+  flex-shrink: 0;
+}
+
+.app-tabbar-scroll-btn:hover,
+.app-tabbar-clear-btn:hover {
+  background: rgba(var(--color-primary-rgb), 0.1);
+  color: var(--color-primary-dark);
+}
+
+.app-tabbar-clear-btn {
+  margin-left: 4px;
+  border-left: 1px solid var(--color-border);
+  border-radius: 0 6px 6px 0;
+  width: 32px;
+}
+
+.app-tabbar-clear-btn:hover {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+/* Dark theme */
+html[data-theme="dark"] .app-tabbar {
+  background: linear-gradient(180deg, rgba(var(--color-primary-rgb), 0.06) 0%, #0f1117 100%);
+  border-top-color: #252f42;
+}
+html[data-theme="dark"] .app-tabbar-tab {
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+}
+html[data-theme="dark"] .app-tabbar-tab:hover {
+  background: rgba(var(--color-primary-rgb), 0.14);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .app-tabbar-tab.is-active {
+  background: #161b27;
+  color: #f1f5f9;
+  border-color: #252f42;
+  box-shadow: 0 -2px 0 var(--color-primary) inset, 0 -1px 0 #161b27;
+}
+html[data-theme="dark"] .app-tabbar-tab-close:hover {
+  background: rgba(220, 38, 38, 0.22);
+  color: #fca5a5;
+}
+html[data-theme="dark"] .app-tabbar-clear-btn {
+  border-left-color: #252f42;
+}
+
+/* ── Button base ───────────────────────────────────────────────────────────
+   IMPORTANT: 'background' is intentionally NOT in this transition list.
+   Gradient-to-gradient cannot be interpolated by browsers — including it
+   causes the flicker. Visual hover feedback is handled by filter/transform. */
+.ant-btn {
+  font-weight: var(--font-semibold);
+  border-radius: 10px;
+  height: 34px;
+  padding-inline: 14px;
+  box-shadow: none;
+  transition:
+    color        0.18s ease,
+    border-color 0.18s ease,
+    box-shadow   0.18s ease !important;
+}
+
+.ant-btn.ant-btn-sm {
+  height: 30px;
+  padding-inline: 12px;
+}
+
+.ant-btn.ant-btn-lg {
+  height: 40px;
+  padding-inline: 18px;
+}
+
+/* ── Primary button ────────────────────────────────────────────────────────
+   The gradient is pinned to the SAME value on every pseudo-state with
+   !important so AntD's CSS-in-JS hover override becomes a no-op.
+   Only filter + transform + box-shadow ever change — all animatable. */
+.ant-btn-primary:not(.ant-btn-background-ghost),
+.ant-btn-primary:not(.ant-btn-background-ghost):hover,
+.ant-btn-primary:not(.ant-btn-background-ghost):focus,
+.ant-btn-primary:not(.ant-btn-background-ghost):active,
+.ant-btn-primary:not(.ant-btn-background-ghost)[disabled] {
+  border: none !important;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.10) 1px, transparent 0),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0px,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px,
+      transparent 8px
+    ),
+    linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%) !important;
+  background-size: 12px 12px, 100% 100%, 100% 100% !important;
+}
+
+.ant-btn-primary:not(.ant-btn-background-ghost) {
+  box-shadow: 0 2px 8px rgba(var(--color-primary-rgb), 0.22);
+}
+
+.ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover {
+  filter: brightness(0.88);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(var(--color-primary-rgb), 0.30);
+}
+
+.ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):active {
+  filter: brightness(0.78);
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(var(--color-primary-rgb), 0.16);
+}
+
+/* ── Default button ────────────────────────────────────────────────────────
+   Solid colour → solid colour transitions are interpolatable, so background
+   is safe here. We still skip it from the base .ant-btn transition to keep
+   the rule minimal; AntD's own transition handles it fine for solid colours. */
+.ant-btn-default {
+  border-color: var(--color-border-strong);
+  background: #ffffff;
+}
+
+.ant-btn-default:not(:disabled):hover {
+  color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  background: var(--color-primary-light) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(var(--color-primary-rgb), 0.10);
+}
+
+.ant-btn-default:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* ── Brand CTA buttons ───────────────────────────────────────────────────────
+   The "Export Report" red-gradient pattern, applied to every standard labeled
+   button across BOTH systems — Ant Design (.ant-btn-*) and shadcn (.hc-cta).
+   Bright #ff2d2d top-left → #E10101 → #a60303, a fine diagonal sheen, and a
+   soft red glow. Icon-only, text, link and dangerous buttons are deliberately
+   excluded so utility controls and delete/danger semantics stay legible. */
+.hc-cta,
+.ant-btn-primary:not(.ant-btn-background-ghost),
+.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link),
+.ant-btn-dashed:not(.ant-btn-icon-only):not(.ant-btn-dangerous) {
+  border: none !important;
+  color: #fff !important;
+  border-radius: 10px !important;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.10) 1px, transparent 0),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 8px
+    ),
+    linear-gradient(135deg, var(--color-primary, #ff2d2d) 0%, var(--color-primary, #E10101) 55%, var(--color-primary-dark, #a60303) 100%) !important;
+  background-size: 12px 12px, 100% 100%, 100% 100% !important;
+  box-shadow: 0 10px 26px -8px rgba(var(--color-primary-rgb, 225, 1, 1), 0.55) !important;
+  transition: transform 0.14s ease, box-shadow 0.18s ease, filter 0.18s ease !important;
+}
+.hc-cta .anticon, .hc-cta svg,
+.ant-btn-primary:not(.ant-btn-background-ghost) .anticon,
+.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link) .anticon,
+.ant-btn-dashed:not(.ant-btn-icon-only):not(.ant-btn-dangerous) .anticon {
+  color: #fff !important;
+}
+
+.hc-cta:not(:disabled):hover,
+.ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
+.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover,
+.ant-btn-dashed:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(:disabled):hover {
+  color: #fff !important;
+  transform: translateY(-1px);
+  filter: brightness(1.05) !important;
+  box-shadow: 0 14px 30px -8px rgba(225, 1, 1, 0.68) !important;
+}
+
+.hc-cta:not(:disabled):active,
+.ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):active,
+.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):active,
+.ant-btn-dashed:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(:disabled):active {
+  transform: translateY(0);
+  filter: brightness(0.96) !important;
+  box-shadow: 0 6px 14px -8px rgba(225, 1, 1, 0.5) !important;
+}
+
+/* disabled → muted, never a live gradient */
+.hc-cta:disabled,
+.ant-btn-primary:not(.ant-btn-background-ghost):disabled,
+.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):disabled,
+.ant-btn-dashed:not(.ant-btn-icon-only):not(.ant-btn-dangerous):disabled {
+  background-image: none !important;
+  background: #efe9e6 !important;
+  color: #b9b2ad !important;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* ── Period toggle (idle) ────────────────────────────────────────────────────
+   Dashboard date-range toggles: unselected stays white with a neutral label so
+   only the active period reads as the red CTA. Overrides the brand-CTA rule
+   above (which otherwise paints every labeled button red). */
+/* Specificity must exceed the brand-CTA selector's :not() chain above, so the
+   full chain is repeated with the .period-toggle-idle class added. */
+.period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link),
+.period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):focus {
+  background: #ffffff !important;
+  background-image: none !important;
+  color: var(--color-foreground, #3c3a40) !important;
+  border: 1px solid var(--color-border-strong, #e0d9d5) !important;
+  box-shadow: none !important;
+}
+.period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover {
+  background: var(--color-primary-light, #fff5f5) !important;
+  background-image: none !important;
+  color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+.period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link) .anticon {
+  color: inherit !important;
+}
+
+/* ── Period Segmented control ────────────────────────────────────────────────
+   Dashboard date-range selector rendered as a single segmented toggle. The
+   active segment reads as the brand CTA; idle segments stay neutral with a
+   brand-tinted hover, matching the .period-toggle-idle buttons it replaces. */
+/* The whole cluster reads as one brand-forward control deck: a soft pill rail
+   of period chips with a red-gradient active thumb, a matching Custom-range
+   pill, and a red-gradient Export CTA — same 32px height + pill radius. */
+.period-segmented.ant-segmented {
+  background: linear-gradient(180deg, #ffffff 0%, #faf5f3 100%);
+  border: 1px solid var(--color-border-strong, #e0d9d5);
+  border-radius: 999px;
+  padding: 3px;
+  box-shadow: inset 0 1px 2px rgba(26, 2, 4, 0.05);
+}
+.period-segmented .ant-segmented-item {
+  min-height: 24px;
+  border-radius: 999px !important;
+  transition: color .18s ease, background .18s ease;
+}
+.period-segmented .ant-segmented-item-label {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.period-segmented .ant-segmented-thumb,
+.period-segmented .ant-segmented-item-selected {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark, #a60303) 100%) !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 11px -3px rgba(var(--color-primary-rgb, 225, 1, 1), 0.5);
+}
+.period-segmented .ant-segmented-item-selected,
+.period-segmented .ant-segmented-item-selected .ant-segmented-item-label {
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.period-segmented .ant-segmented-item:not(.ant-segmented-item-selected) {
+  color: var(--color-foreground, #3c3a40);
+}
+.period-segmented .ant-segmented-item:not(.ant-segmented-item-selected):hover {
+  color: var(--color-primary) !important;
+  background: var(--color-primary-light, #fff5f5) !important;
+}
+
+/* Dark mode — the period Segmented rail + idle "Custom" button hardcode a white
+   fill above, so re-skin them for the dark shell (the selected/active states
+   keep their brand-red gradient, which reads fine on dark). */
+html[data-theme="dark"] .period-segmented.ant-segmented {
+  background: #161b27;
+  border-color: #252f42;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+html[data-theme="dark"] .period-segmented .ant-segmented-item:not(.ant-segmented-item-selected) {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link),
+html[data-theme="dark"] .period-toggle-idle.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):focus {
+  background: #161b27 !important;
+  color: #cbd5e1 !important;
+  border-color: #252f42 !important;
+}
+
+/* Custom-range pill — matches the segmented rail (height, pill radius, weight)
+   so the date controls read as one cluster. Idle = light pill; active = brand
+   red (type=primary), mirroring the selected segment. */
+.dashboard-filter-group .ant-btn-sm {
+  height: 32px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  padding-inline: 14px;
+}
+
+/* Export Report — the eye-catching primary action: red-gradient fill, pill
+   shape, soft brand glow that lifts on hover. */
+.export-report-btn.ant-btn-sm {
+  height: 32px;
+  border-radius: 999px;
+  padding-inline: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.export-report-btn.ant-btn-sm .anticon { font-size: 12px; }
+.export-report-btn.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link),
+.export-report-btn.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):focus {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark, #a60303) 100%) !important;
+  background-image: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark, #a60303) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 4px 12px -3px rgba(var(--color-primary-rgb, 225, 1, 1), 0.5) !important;
+}
+.export-report-btn.ant-btn-default:not(.ant-btn-icon-only):not(.ant-btn-dangerous):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover {
+  background-image: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark, #a60303) 100%) !important;
+  color: #ffffff !important;
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -4px rgba(var(--color-primary-rgb, 225, 1, 1), 0.62) !important;
+}
+.export-report-btn.ant-btn-default .anticon {
+  color: inherit !important;
+}
+
+/* Thin separator between the date-filter group and the Export action so the
+   primary CTA reads as a distinct action, not another filter chip. */
+.dashboard-action-divider {
+  display: inline-block;
+  width: 1px;
+  align-self: stretch;
+  min-height: 22px;
+  margin: 0 2px;
+  background: var(--color-border-strong, #e0d9d5);
+}
+
+/* Popup consistency: modal, drawer, popover, dropdown */
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content,
+.ant-popover .ant-popover-inner,
+.ant-dropdown .ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container,
+.ant-tooltip .ant-tooltip-inner {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Keep close button inside the rounded modal boundary */
+.ant-modal .ant-modal-close {
+  top: 12px;
+  inset-inline-end: 14px;
+}
+
+.ant-modal .ant-modal-header,
+.ant-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+html[data-theme="dark"] .ant-modal .ant-modal-header,
+html[data-theme="dark"] .ant-drawer .ant-drawer-header {
+  background: var(--color-bg-surface) !important;
+  border-color: #252f42 !important;
+}
+
+.ant-modal .ant-modal-title,
+.ant-drawer .ant-drawer-title {
+  font-size: 15px;
+  font-weight: var(--font-bold);
+  color: var(--color-text-primary);
+}
+
+.ant-table-wrapper,
+.ant-card {
+  border-radius: var(--radius-lg);
+}
+
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: rgba(var(--color-primary-rgb), 0.08) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected:hover > td {
+  background: rgba(var(--color-primary-rgb), 0.13) !important;
+}
+
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td * {
+  color: inherit;
+}
+
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td .ant-btn,
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td .ant-tag,
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td .ant-avatar,
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td .action-link {
+  color: unset;
+}
+
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td a,
+.question-bank-table .ant-table-tbody > tr.ant-table-row-selected > td button {
+  color: inherit;
+}
+
+/* ── Assign-courses table inside modal ──────────────────────────────────────── */
+.assign-courses-table .ant-table {
+  background: transparent;
+}
+.assign-courses-table .ant-table-thead > tr > th {
+  background: #f8f9fb !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary) !important;
+  padding: 10px 12px !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+.assign-courses-table .ant-table-thead > tr > th.ant-table-selection-column {
+  padding-left: 16px !important;
+}
+.assign-courses-table .ant-table-tbody > tr > td {
+  padding: 10px 12px !important;
+  border-bottom: 1px solid #f0f1f3 !important;
+  vertical-align: middle;
+}
+.assign-courses-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+.assign-courses-table .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: #f0f4ff !important;
+}
+.assign-courses-table .ant-table-tbody > tr.ant-table-row-selected:hover > td {
+  background: #e8eeff !important;
+}
+.assign-courses-table .ant-table-tbody > tr:hover > td {
+  background: #fafbfc !important;
+}
+.assign-courses-table .ant-table-tbody > tr.ant-table-row-selected > td * {
+  color: inherit;
+}
+.assign-courses-table .ant-table-tbody > tr.ant-table-row-selected > td .ant-tag,
+.assign-courses-table .ant-table-tbody > tr.ant-table-row-selected > td .ant-btn {
+  color: unset;
+}
+.assign-courses-table .ant-table-container {
+  border: none !important;
+}
+.assign-courses-table .ant-table-body {
+  scrollbar-width: thin;
+}
+
+
+/* ── Small laptops (1024–1500px): give the topbar room BEFORE it collides ──
+   The right block is flex-shrink:0 (icons must not squash), so the flexible
+   pieces have to yield first: the search narrows with the viewport and the
+   clock drops its date. Below 992px the phone rules take over. */
+@media (max-width: 1500px) {
+  .app-global-search {
+    width: clamp(200px, 24vw, 340px) !important;
+  }
+}
+
+@media (max-width: 1280px) {
+  .app-time-date {
+    display: none;
+  }
+  .app-global-search {
+    width: clamp(180px, 20vw, 260px) !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .app-global-search {
+    width: clamp(170px, 34vw, 240px) !important;
+  }
+
+  .app-pin-toggle {
+    display: none !important;
+  }
+
+  .app-time-chip {
+    display: none;
+  }
+
+  .header-profile-copy {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-topbar-shell {
+    padding: 8px 10px !important;
+    height: 60px !important;
+    line-height: 60px !important;
+  }
+
+  .app-topbar-inner {
+    padding: 0 8px;
+    border-radius: 12px;
+  }
+
+  .app-topbar-left .ant-breadcrumb {
+    display: none;
+  }
+
+  .app-recent-dropdown-button {
+    padding-inline: 8px !important;
+  }
+
+  .app-global-search {
+    width: min(44vw, 180px) !important;
+  }
+
+  /* Collapse the "Mobile App View" button to icon-only so it stops pushing the
+     topbar past the viewport on phones. */
+  .app-topbar-mobileview {
+    padding: 0 8px !important;
+  }
+  .app-topbar-mobileview-label {
+    display: none;
+  }
+
+}
+
+/* ── Mobile / tablet: sidebar becomes an off-canvas drawer ─────────────────
+   On desktop the sidebar is a docked column. At ≤1023px it slides off-canvas
+   and is summoned by the hamburger (data-mobile-nav="open" on the shell), with
+   a tap-to-dismiss backdrop. The main column then reclaims the full width. */
+@media (max-width: 1023px) {
+  .app-layout-shell .sb-sider.ant-layout-sider {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100vh !important;
+    z-index: 1100;
+    transform: translateX(-100%);
+    transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 48px rgba(0, 0, 0, 0.28);
+  }
+  .app-layout-shell[data-mobile-nav="open"] .sb-sider.ant-layout-sider {
+    transform: translateX(0);
+  }
+  .app-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1090;
+    animation: app-backdrop-in 0.2s ease;
+  }
+  @keyframes app-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  /* Drawer reclaim: main column is the only in-flow child now → full width. */
+  .app-main-shell {
+    width: 100% !important;
+    min-width: 0;
+  }
+  .app-content-shell {
+    padding: 14px 14px;
+  }
+}
+
+/* ── Phones: trim the topbar so it never overflows ─────────────────────── */
+@media (max-width: 600px) {
+  .app-content-shell {
+    padding: 12px 10px;
+  }
+  .app-topbar-optional {
+    display: none !important;
+  }
+  .app-topbar-divider {
+    display: none !important;
+  }
+  .app-global-search {
+    width: min(40vw, 150px) !important;
+  }
+  .app-topbar-right {
+    gap: 4px !important;
+  }
+}
+
+/* ============================================================
+   Typography Utilities
+   ============================================================ */
+
+.text-xs   { font-size: var(--text-xs); }
+.text-sm   { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-md   { font-size: var(--text-md); }
+.text-lg   { font-size: var(--text-lg); }
+.text-xl   { font-size: var(--text-xl); }
+.text-2xl  { font-size: var(--text-2xl); }
+
+.font-regular  { font-weight: var(--font-regular); }
+.font-medium   { font-weight: var(--font-medium); }
+.font-semibold { font-weight: var(--font-semibold); }
+.font-bold     { font-weight: var(--font-bold); }
+
+.text-primary   { color: var(--color-text-primary); }
+.text-secondary { color: var(--color-text-secondary); }
+.text-tertiary  { color: var(--color-text-tertiary); }
+.text-disabled  { color: var(--color-text-disabled); }
+
+/* Uppercase label style — used for column headers, section labels */
+.label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--color-text-tertiary);
+}
+
+/* ============================================================
+   Page Layout Utilities
+   ============================================================ */
+
+.page-header {
+  margin-bottom: var(--space-5);
+}
+
+.page-title {
+  font-family: var(--hc-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  margin: var(--space-1) 0 0;
+}
+
+/* ── Page shell: standard scrollable page wrapper ───── */
+.page-shell {
+  padding: 24px 28px;
+  min-height: 100%;
+  overflow-y: auto;
+  background: var(--color-bg-base);
+}
+
+/* ── Module header bar (white bar at top of tabbed pages) */
+.module-header-bar {
+  background: #ffffff;
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* ── Module icon box (gradient square in module headers) */
+.module-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Tab pill buttons */
+.tab-pill-group {
+  display: flex;
+  gap: 6px;
+}
+
+.tab-pill {
+  padding: 6px 18px;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-border-strong);
+  background: #ffffff;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-family: var(--font-family-base);
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.tab-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
+}
+
+.tab-pill.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+}
+
+/* ── Filter bar surface */
+.filter-bar {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+/* ── List / table wrapper surface */
+.list-surface {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* ── Alternating row background for wide tables (opt-in via rowClassName) */
+.ant-table-tbody > tr.row-alt > td {
+  background: var(--color-bg-subtle);
+}
+.ant-table-tbody > tr.row-alt:hover > td,
+.ant-table-tbody > tr.row-alt > td.ant-table-cell-row-hover {
+  background: var(--color-primary-tint) !important;
+}
+
+/* ── Card surface (forms, detail blocks) */
+.card-surface {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* ── My Profile: view-only mode — render form-field inputs as flat label/value.
+   Scope to `.profile-form-field` so calendars, month pickers, tabs, tables, and
+   view-action buttons elsewhere on the tab stay fully interactive. */
+.profile-view-mode .profile-form-field .ant-input,
+.profile-view-mode .profile-form-field .ant-input-number,
+.profile-view-mode .profile-form-field .ant-input-number-input,
+.profile-view-mode .profile-form-field .ant-input-affix-wrapper,
+.profile-view-mode .profile-form-field .ant-picker,
+.profile-view-mode .profile-form-field .ant-select:not(.ant-select-customize-input) .ant-select-selector,
+.profile-view-mode .profile-form-field textarea.ant-input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid #F3F4F6 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #111827 !important;
+  font-weight: 500 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  min-height: 32px;
+  pointer-events: none;
+}
+.profile-view-mode .profile-form-field .ant-input-affix-wrapper > .ant-input,
+.profile-view-mode .profile-form-field .ant-input-number-input {
+  border: none !important;
+  border-bottom: none !important;
+  padding-left: 0 !important;
+}
+.profile-view-mode .profile-form-field .ant-select-arrow,
+.profile-view-mode .profile-form-field .ant-picker-suffix,
+.profile-view-mode .profile-form-field .ant-picker-clear,
+.profile-view-mode .profile-form-field .ant-input-number-handler-wrap,
+.profile-view-mode .profile-form-field .ant-input-prefix {
+  display: none !important;
+}
+.profile-view-mode .profile-form-field .ant-input::placeholder,
+.profile-view-mode .profile-form-field .ant-input-number-input::placeholder,
+.profile-view-mode .profile-form-field .ant-select-selection-placeholder {
+  color: #D1D5DB !important;
+  font-style: normal;
+}
+.profile-view-mode .profile-form-field .ant-radio-wrapper,
+.profile-view-mode .profile-form-field .ant-checkbox-wrapper,
+.profile-view-mode .profile-form-field .ant-switch {
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Hide all edit-action controls in view mode */
+.profile-view-mode .profile-edit-action,
+.profile-view-mode .ant-btn-dashed,
+.profile-view-mode .ant-btn-dangerous:has(.anticon-delete),
+.profile-view-mode .ant-btn:has(.anticon-upload),
+.profile-view-mode .ant-btn:has(.anticon-cloud-upload),
+.profile-view-mode .ant-btn:has(.anticon-plus),
+.profile-view-mode .profile-form-field .ant-btn-dangerous,
+.profile-view-mode .ant-upload,
+.profile-view-mode input[type="file"] {
+  display: none !important;
+}
+
+/* Hover effect on sidebar nav buttons (active items unaffected) */
+.profile-sidebar-item:not(.is-active):hover {
+  background: #F9FAFB !important;
+  color: #111827 !important;
+}
+.profile-sidebar-item:not(.is-active):hover > span:nth-child(2) {
+  color: #4B5563 !important;
+}
+
+/* Subtle focus ring for inputs in edit mode */
+.profile-form-field .ant-input:focus,
+.profile-form-field .ant-input-affix-wrapper-focused,
+.profile-form-field .ant-picker-focused,
+.profile-form-field .ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 3px rgba(59,110,234,0.12) !important;
+}
+
+/* ── Filter field labels */
+.filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 0.06em;
+  margin-bottom: 5px;
+}
+
+/* ── Inline text action links in tables */
+.action-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-family-base);
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s;
+}
+
+.action-link:hover {
+  color: var(--color-primary-dark);
+}
+
+.action-link.danger {
+  color: var(--color-status-rejected);
+}
+
+.action-link.danger:hover {
+  color: #b91c1c;
+}
+
+/* ── Page header row (title + CTA button) */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.page-header-row h1 {
+  font-family: var(--hc-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.page-header-row p {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin: 4px 0 0;
+}
+
+/* ============================================================
+   Surface / Card Utilities
+   ============================================================ */
+
+.surface {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Training Overview row accent — left edge stripe only, no full-row tint
+   so individual cells can carry their own per-course status color. */
+.training-row-expired > td:first-child {
+  box-shadow: inset 3px 0 0 #ef4444;
+}
+.training-row-expiring > td:first-child {
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+/* Per-course slot cell tints (applied via onCell) */
+.training-cell-expired {
+  background: #fef2f2 !important;
+}
+.training-cell-expiring {
+  background: #fffbeb !important;
+}
+.training-cell-valid {
+  background: #f0fdf4 !important;
+}
+
+/* ============================================================
+   Status Badge Utilities
+   ============================================================ */
+
+.badge-pending {
+  background: var(--color-status-pending-bg);
+  color: var(--color-status-pending);
+}
+
+.badge-approved {
+  background: var(--color-status-approved-bg);
+  color: var(--color-status-approved);
+}
+
+.badge-rejected {
+  background: var(--color-status-rejected-bg);
+  color: var(--color-status-rejected);
+}
+
+.badge-draft {
+  background: var(--color-status-draft-bg);
+  color: var(--color-status-draft);
+}
+
+.badge-info {
+  background: var(--color-status-info-bg);
+  color: var(--color-status-info);
+}
+
+/* ============================================================
+   Animations & Micro-interactions
+   ============================================================ */
+
+/* Respect reduced-motion OS preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:         0.01ms !important;
+    animation-iteration-count:  1      !important;
+    transition-duration:        0.01ms !important;
+  }
+}
+
+
+
+/* ── Tab pill lift ─────────────────────────────────────────── */
+.tab-pill {
+  transition:
+    border-color 0.18s ease,
+    color        0.18s ease;
+}
+
+.tab-pill:hover {
+  box-shadow: none;
+}
+
+.tab-pill.active {
+  box-shadow: none;
+}
+
+/* ── Input / Select / Picker smooth focus ──────────────────── */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker {
+  transition: border-color 0.12s ease !important;
+}
+
+/* ── h9-antd: size a single antd Select to match native h-9 (36px) inputs so
+      mixed rows (e.g. BOM Input Materials Setup) line up. ─────────────────── */
+.h9-antd.ant-select .ant-select-selector {
+  height: 36px !important;
+}
+.h9-antd.ant-select .ant-select-selection-item,
+.h9-antd.ant-select .ant-select-selection-placeholder {
+  line-height: 34px !important;
+}
+.h9-antd.ant-select .ant-select-selection-search-input {
+  height: 34px !important;
+}
+
+/* ── no-spinner: hide the up/down stepper on number inputs ─────────────── */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ── Ant Design Tag ─────────────────────────────────────────── */
+.ant-tag {
+  transition: opacity 0.12s ease;
+}
+
+/* ── Rich text policy content preview ──────────────────────── */
+.policy-content-preview p { margin: 0 0 8px; }
+.policy-content-preview p:last-child { margin-bottom: 0; }
+.policy-content-preview h1 { font-size: 16px; font-weight: 700; color: #111827; margin: 0 0 6px; }
+.policy-content-preview h2 { font-size: 14px; font-weight: 700; color: #111827; margin: 12px 0 5px; }
+.policy-content-preview h3 { font-size: 13px; font-weight: 700; color: #374151; margin: 10px 0 4px; }
+.policy-content-preview ul,
+.policy-content-preview ol  { padding-left: 20px; margin: 4px 0 8px; }
+.policy-content-preview li  { margin-bottom: 4px; }
+.policy-content-preview strong { color: #111827; }
+.policy-content-preview blockquote {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-light);
+  padding: 6px 12px;
+  margin: 8px 0;
+  border-radius: 0 6px 6px 0;
+  color: #4b5563;
+}
+.policy-content-preview a { color: var(--color-primary); }
+
+/* ============================================================
+   Dark Mode Overrides  (html[data-theme="dark"])
+   ============================================================ */
+
+html[data-theme="dark"] {
+  /* Donut palette remapped to hues that stay legible on the dark shell —
+     the light maroon/ink vanish against #0f1117. */
+  --chart-track: #252f42;
+  --chart-1:     #f87171;
+  --chart-2:     #fb7185;
+  --chart-3:     #fbbf24;
+  --chart-4:     #94a3b8;
+
+  --color-bg-base:        #0f1117;
+  --color-bg-surface:     #161b27;
+  --color-bg-subtle:      #1a2030;
+  --color-border:         #252f42;
+  --color-border-strong:  #2d3a52;
+  --color-text-primary:   #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary:  #94a3b8;
+  --color-text-disabled:  #64748b;
+  --color-primary-tint:   rgba(var(--color-primary-rgb), 0.15);
+  --color-status-pending-bg:  rgba(217, 119, 6,   0.15);
+  --color-status-approved-bg: rgba(5,   150, 105, 0.15);
+  --color-status-rejected-bg: rgba(220, 38,  38,  0.15);
+  --color-status-draft-bg:    rgba(107, 114, 128, 0.15);
+  --color-status-info-bg:     rgba(14,  165, 233, 0.15);
+  /* Dashboard "mockup" design tokens — used across the dashboard & KPI cards.
+     Without dark values here they'd keep their light defaults and leave the
+     dashboard text/borders unreadable in dark mode. */
+  --ink:              #f1f5f9;
+  --line:             #252f42;
+  --muted-foreground: #94a3b8;
+}
+
+html[data-theme="dark"] body {
+  background: #0f1117;
+  color: #f1f5f9;
+}
+
+/* ── Layout shell ── */
+html[data-theme="dark"] .app-layout-shell {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--color-primary-rgb), 0.04), transparent 42%),
+    radial-gradient(circle at 0% 90%, rgba(99, 102, 241, 0.03), transparent 36%),
+    #0f1117;
+}
+
+/* Sidebar dark-theme styles live in src/layouts/AppLayout/Sidebar.css */
+
+/* ── Main content area ── */
+html[data-theme="dark"] .app-content-shell {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--color-primary-rgb), 0.03), transparent 45%),
+    #0f1117;
+}
+
+/* ── Page shell ── */
+html[data-theme="dark"] .page-shell {
+  background: #0f1117;
+}
+
+/* ── Login page — Harvest Catering design system ── */
+.hc-page {
+  width: 100%;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  background: var(--paper);
+  overflow: hidden;
+  font-family: var(--hc-sans);
+}
+
+/* ── Left hero panel ── */
+.hc-left {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+}
+
+.hc-treat-f {
+  background: var(--gradient-hero);
+}
+
+.hc-arcs {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.hc-left-inner {
+  position: relative;
+  z-index: 3;
+  height: 100%;
+  padding: clamp(40px,5vw,64px) clamp(36px,4.4vw,64px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hc-editorial {
+  justify-content: flex-start !important;
+}
+
+.hc-wordmark {
+  font-family: var(--hc-serif);
+  font-size: clamp(17px, 1.4vw, 20px);
+  font-weight: 500;
+  color: #fff;
+}
+
+.hc-ed-body {
+  margin: auto 0 340px;
+}
+
+.hc-ed-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #ff7a7a;
+  margin-bottom: 22px;
+}
+
+.hc-ed-hero {
+  font-family: var(--hc-serif);
+  font-weight: 400;
+  font-size: clamp(34px, 3.4vw, 46px);
+  line-height: 1.14;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -.005em;
+  text-wrap: balance;
+}
+
+.hc-ed-hero em {
+  font-style: italic;
+  color: #ff5b5b;
+}
+
+.hc-ed-lede {
+  font-size: clamp(13.5px, 1.1vw, 15px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, .6);
+  max-width: 40ch;
+  margin-top: 24px;
+}
+
+.hc-ed-foot {
+  margin-top: 24px;
+  margin-bottom: -40px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hc-stats {
+  display: flex;
+  gap: clamp(24px, 2.6vw, 38px);
+}
+
+.hc-stat-n {
+  font-family: var(--hc-serif);
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -.02em;
+  line-height: 1;
+}
+
+.hc-stat-l {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .5);
+  margin-top: 6px;
+}
+
+/* animated planes */
+/* planes now use SVG animateMotion — no CSS keyframes needed */
+
+/* route waypoint pulse rings */
+@keyframes hc-dot-pulse {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(3);   opacity: 0;   }
+}
+.hc-dot-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hc-dot-pulse 2.4s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-dot-ring { animation: none; }
+}
+
+/* logo tile jet animation */
+@keyframes hc-takeoff-ci {
+  0%   { transform: translate(-14px,16px) scale(.5);   opacity: 0; }
+  14%  { opacity: 1; }
+  58%  { transform: translate(0,0)        scale(1);    opacity: 1; }
+  80%  { transform: translate(10px,-14px) scale(1.2);  opacity: 0; }
+  100% { transform: translate(10px,-14px) scale(1.2);  opacity: 0; }
+}
+.hc-plane-ci {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: hc-takeoff-ci 3.6s cubic-bezier(.42,0,.3,1) infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-plane-ci { animation: none; }
+}
+
+/* ── Right form panel ── */
+.hc-form-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  padding: clamp(28px, 4vw, 48px);
+  overflow-y: auto;
+}
+
+.hc-form {
+  width: 100%;
+  max-width: 392px;
+  font-family: var(--hc-sans);
+  animation: hc-rise .55s cubic-bezier(.2,.7,.2,1) both;
+}
+
+@keyframes hc-rise {
+  from { transform: translateY(9px); opacity: 0; }
+  to   { transform: none;            opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-form { animation: none; }
+}
+
+.hc-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin: 0;
+}
+
+.hc-h1 {
+  font-family: var(--hc-serif);
+  font-weight: 600;
+  font-size: clamp(23px, 2.05vw, 27px);
+  line-height: 1.12;
+  color: var(--ink);
+  margin: 8px 0 0;
+  letter-spacing: -.01em;
+}
+
+.hc-sub {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  margin: 11px 0 0;
+  line-height: 1.55;
+}
+
+.hc-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #5a565c;
+  margin: 0 0 8px;
+}
+
+.hc-field {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper-warm);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+.hc-field:focus-within {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(225,1,1,.1);
+  background: var(--paper);
+}
+
+.hc-field.hc-err {
+  border-color: #d9483b;
+  background: var(--paper);
+}
+
+.hc-field-ic {
+  color: #b3aeac;
+  display: flex;
+  flex: none;
+}
+
+.hc-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--hc-sans, inherit);
+  font-size: 14px;
+  color: var(--ink);
+  padding: 0 11px;
+}
+
+.hc-input::placeholder {
+  color: #b3aeac;
+}
+
+.hc-eye {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: #b3aeac;
+  cursor: pointer;
+  border-radius: 8px;
+  flex: none;
+  transition: color .15s, background .15s;
+}
+
+.hc-eye:hover {
+  color: var(--red);
+  background: rgba(225,1,1,.06);
+}
+
+.hc-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 22px;
+  min-height: 18px;
+}
+
+.hc-caps-hint {
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.3;
+  color: #c2410c;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.hc-caps-hint.on {
+  opacity: 1;
+}
+
+.hc-err-hint {
+  font-size: 11.5px;
+  color: #d9483b;
+  margin: 7px 0 4px;
+  font-weight: 500;
+  min-height: 18px;
+  visibility: hidden;
+}
+
+.hc-err-hint.visible {
+  visibility: visible;
+}
+
+.hc-forgot {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  text-decoration: none;
+}
+
+.hc-forgot:hover {
+  text-decoration: underline;
+}
+
+.hc-btn {
+  width: 100%;
+  height: 54px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  white-space: nowrap;
+  font-family: var(--hc-sans, inherit);
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gradient-button);
+  box-shadow: 0 10px 26px -8px rgba(225,1,1,.55);
+  transition: transform .12s, box-shadow .12s, filter .2s;
+}
+
+.hc-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -8px rgba(225,1,1,.68);
+}
+
+.hc-btn:active {
+  transform: translateY(0);
+}
+
+.hc-btn:disabled {
+  cursor: progress;
+  filter: saturate(.85) brightness(.98);
+}
+
+.hc-btn:focus-visible {
+  outline: 3px solid rgba(225,1,1,.35);
+  outline-offset: 2px;
+}
+
+.hc-spin {
+  width: 17px;
+  height: 17px;
+  border: 2.4px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: hc-spin .7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes hc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.hc-terms {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: #9a9499;
+  text-align: center;
+  margin: 16px 0 0;
+}
+
+.hc-terms button {
+  color: var(--red);
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.hc-build {
+  position: absolute;
+  bottom: 18px;
+  right: 24px;
+  font-size: 10.5px;
+  letter-spacing: .05em;
+  color: #c9c4c1;
+}
+
+/* OTP step */
+.hc-otp-banner {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(225,1,1,.05);
+  border: 1px solid rgba(225,1,1,.12);
+  margin-bottom: 22px;
+}
+
+.hc-otp-banner-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg,#ff2d2d,#E10101);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.hc-otp-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hc-otp-input {
+  width: 100%;
+  height: 52px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-warm);
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+  font-family: var(--hc-sans, inherit);
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.hc-otp-input:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(225,1,1,.1);
+  background: var(--paper);
+}
+
+.hc-otp-input.has-value {
+  border-color: rgba(225,1,1,.35);
+  background: var(--paper);
+}
+
+.hc-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.hc-link-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hc-link-btn:hover {
+  text-decoration: underline;
+}
+
+.hc-link-btn.muted {
+  color: var(--muted-foreground);
+}
+
+.hc-link-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.hc-link-btn:disabled:hover {
+  text-decoration: none;
+}
+
+/* responsive */
+@media (max-width: 880px) {
+  .hc-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+  .hc-left { min-height: 300px; }
+  .hc-editorial { justify-content: center !important; padding-top: 38px !important; padding-bottom: 38px !important; }
+  .hc-ed-body { margin: 18px 0; }
+  .hc-ed-foot { margin-bottom: 0; }
+  .hc-form-wrap { padding: 40px 28px 64px; }
+  .hc-build { display: none; }
+}
+
+@media (max-width: 520px) {
+  .hc-ed-lede { display: none; }
+  .hc-h1 { font-size: 24px; }
+  .hc-otp-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Surfaces ── */
+html[data-theme="dark"] .surface,
+html[data-theme="dark"] .card-surface,
+html[data-theme="dark"] .list-surface,
+html[data-theme="dark"] .filter-bar,
+html[data-theme="dark"] .module-header-bar {
+  background: #161b27;
+  border-color: #252f42;
+}
+
+/* ── Modal title dark ── */
+html[data-theme="dark"] .ant-modal .ant-modal-title,
+html[data-theme="dark"] .ant-drawer .ant-drawer-title {
+  color: #f1f5f9;
+}
+
+/* ── Default button dark ── */
+html[data-theme="dark"] .ant-btn-default {
+  background: #1e2638;
+  border-color: #2d3a52;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .ant-btn-default:not(:disabled):hover {
+  background: #252f42 !important;
+}
+
+/* ── Tab pills dark ── */
+html[data-theme="dark"] .tab-pill {
+  background: #1e2638;
+  border-color: #2d3a52;
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .tab-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb), 0.10);
+}
+
+html[data-theme="dark"] .tab-pill.active {
+  background: rgba(var(--color-primary-rgb), 0.18);
+  border-color: rgba(var(--color-primary-rgb), 0.45);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ── Inputs / Selects dark ── */
+html[data-theme="dark"] .ant-input,
+html[data-theme="dark"] .ant-input-affix-wrapper,
+html[data-theme="dark"] .ant-select-selector,
+html[data-theme="dark"] .ant-picker {
+  background: #1e2638 !important;
+  border-color: #2d3a52 !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .ant-input::placeholder,
+html[data-theme="dark"] .ant-select-selection-placeholder,
+html[data-theme="dark"] .ant-picker-input input::placeholder {
+  color: #475569 !important;
+}
+
+html[data-theme="dark"] .ant-select-arrow,
+html[data-theme="dark"] .ant-picker-suffix {
+  color: #475569;
+}
+
+/* ── Table dark ── */
+html[data-theme="dark"] .ant-table {
+  background: #161b27;
+}
+
+html[data-theme="dark"] .ant-table-thead > tr > th {
+  background: #1a2030 !important;
+  border-bottom-color: #252f42 !important;
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .ant-table-tbody > tr > td {
+  border-bottom-color: #1e2638;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+  background: #1e2638 !important;
+}
+
+html[data-theme="dark"] .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: rgba(var(--color-primary-rgb), 0.12) !important;
+}
+
+html[data-theme="dark"] .ant-table-wrapper .ant-table-container {
+  border-color: #252f42;
+}
+
+/* ── Pagination dark ── */
+html[data-theme="dark"] .ant-pagination-item {
+  background: #1e2638;
+  border-color: #2d3a52;
+}
+
+html[data-theme="dark"] .ant-pagination-item a {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .ant-pagination-item-active {
+  border-color: var(--color-primary) !important;
+}
+
+html[data-theme="dark"] .ant-pagination-prev button,
+html[data-theme="dark"] .ant-pagination-next button {
+  background: #1e2638;
+  border-color: #2d3a52;
+  color: #94a3b8;
+}
+
+/* ── Dropdown / Select popup dark ── */
+html[data-theme="dark"] .ant-select-dropdown,
+html[data-theme="dark"] .ant-dropdown-menu,
+html[data-theme="dark"] .ant-picker-dropdown .ant-picker-panel-container {
+  background: #1a2030 !important;
+  border-color: #252f42 !important;
+}
+
+html[data-theme="dark"] .ant-select-item {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .ant-select-item:hover,
+html[data-theme="dark"] .ant-select-item-option-active {
+  background: #252f42 !important;
+}
+
+html[data-theme="dark"] .ant-select-item-option-selected {
+  background: rgba(var(--color-primary-rgb), 0.18) !important;
+  color: var(--color-primary) !important;
+}
+
+html[data-theme="dark"] .ant-dropdown-menu-item {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .ant-dropdown-menu-item:hover {
+  background: #252f42 !important;
+}
+
+/* ── Modal / Drawer content dark ── */
+html[data-theme="dark"] .ant-modal-content,
+html[data-theme="dark"] .ant-drawer-content {
+  background: #161b27 !important;
+  border-color: #252f42 !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .ant-modal-body,
+html[data-theme="dark"] .ant-drawer-body {
+  color: #cbd5e1;
+}
+
+/* ── Card dark ── */
+html[data-theme="dark"] .ant-card {
+  background: #161b27;
+  border-color: #252f42;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .ant-card-head {
+  background: #1a2030;
+  border-bottom-color: #252f42;
+  color: #f1f5f9;
+}
+
+/* ── General page content dark: catch-all for inline-styled wrappers ── */
+html[data-theme="dark"] .ant-layout-content {
+  background: #0f1117;
+}
+
+html[data-theme="dark"] .ant-layout-content > div[style] {
+  background: #0f1117!important;
+}
+
+/* ── Divider dark ── */
+html[data-theme="dark"] .ant-divider {
+  border-color: #252f42;
+}
+
+/* ── Tooltip dark ── */
+html[data-theme="dark"] .ant-tooltip-inner {
+  background: #252f42 !important;
+  color: #cbd5e1 !important;
+}
+
+/* ── Tag dark ── */
+html[data-theme="dark"] .ant-tag {
+  background: #1e2638;
+  border-color: #2d3a52;
+  color: #94a3b8;
+}
+
+/* ── Progress dark ── */
+html[data-theme="dark"] .ant-progress-bg,
+html[data-theme="dark"] .ant-progress-inner {
+  background-color: #252f42;
+}
+
+/* ── Tabs dark ── */
+html[data-theme="dark"] .ant-tabs-tab {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--color-primary) !important;
+}
+
+html[data-theme="dark"] .ant-tabs-ink-bar {
+  background: var(--color-primary);
+}
+
+html[data-theme="dark"] .ant-tabs-nav::before {
+  border-bottom-color: #252f42 !important;
+}
+
+/* ── Statistic / KPI card text dark ── */
+html[data-theme="dark"] .ant-statistic-title {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .ant-statistic-content {
+  color: #f1f5f9;
+}
+
+/* ============================================================
+   Topbar Style — Minimal (white / flat)
+   ============================================================ */
+
+html[data-topbar="minimal"] .app-topbar-inner {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-topbar="minimal"] .app-crumb {
+  color: var(--color-text-secondary) !important;
+}
+
+html[data-topbar="minimal"] .app-crumb:hover,
+html[data-topbar="minimal"] .app-crumb-active {
+  color: var(--color-text-primary) !important;
+}
+
+html[data-topbar="minimal"] .app-topbar-shell .ant-breadcrumb-separator {
+  color: var(--color-text-disabled) !important;
+}
+
+html[data-topbar="minimal"] .app-topbar-toggle,
+html[data-topbar="minimal"] .app-topbar-icon-button {
+  color: var(--color-text-tertiary) !important;
+}
+
+html[data-topbar="minimal"] .app-topbar-toggle:hover,
+html[data-topbar="minimal"] .app-topbar-icon-button:hover {
+  background: var(--color-bg-subtle) !important;
+  color: var(--color-text-primary) !important;
+}
+
+html[data-topbar="minimal"] .app-pin-toggle,
+html[data-topbar="minimal"] .app-recent-dropdown-button {
+  color: var(--color-text-secondary) !important;
+  background: var(--color-bg-subtle) !important;
+  border-color: var(--color-border) !important;
+}
+
+html[data-topbar="minimal"] .app-pin-toggle:hover,
+html[data-topbar="minimal"] .app-recent-dropdown-button:hover {
+  background: var(--color-primary-light) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+html[data-topbar="minimal"] .app-pin-toggle .anticon-star {
+  color: #f59e0b !important;
+}
+
+html[data-topbar="minimal"] .app-time-chip {
+  color: var(--color-text-secondary) !important;
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-subtle) !important;
+}
+
+html[data-topbar="minimal"] .app-time-divider {
+  background: var(--color-border) !important;
+}
+
+html[data-topbar="minimal"] .header-profile-name {
+  color: var(--color-text-primary) !important;
+}
+
+html[data-topbar="minimal"] .header-profile-role {
+  color: var(--color-text-tertiary) !important;
+}
+
+html[data-topbar="minimal"] .header-profile:hover {
+  background: var(--color-bg-subtle) !important;
+}
+
+/* App launcher button — the inline styles paint it white-on-translucent for the
+   gradient header; on the flat/minimal (light) header that's invisible, so give
+   it the same subtle-surface treatment as the Pin / Recent buttons. */
+html[data-topbar="minimal"] .app-topbar-mobileview {
+  color: var(--color-text-secondary) !important;
+  background: var(--color-bg-subtle) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-topbar="minimal"] .app-topbar-mobileview:hover {
+  color: var(--color-primary) !important;
+  background: var(--color-primary-light) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Dark mode + minimal topbar */
+html[data-theme="dark"][data-topbar="minimal"] .app-topbar-inner {
+  background: #1e2638 !important;
+  border-color: #2d3a52 !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28) !important;
+}
+
+html[data-theme="dark"][data-topbar="minimal"] .app-pin-toggle,
+html[data-theme="dark"][data-topbar="minimal"] .app-recent-dropdown-button {
+  background: #252f42 !important;
+  border-color: #3a4660 !important;
+}
+
+html[data-theme="dark"][data-topbar="minimal"] .app-time-chip {
+  background: #252f42 !important;
+  border-color: #3a4660 !important;
+}
+
+html[data-theme="dark"][data-topbar="minimal"] .app-topbar-mobileview {
+  color: #e2e8f0 !important;
+  background: #252f42 !important;
+  border-color: #3a4660 !important;
+}
+
+/* ============================================================
+   Theme Center — Redesigned (2026)
+   ============================================================ */
+
+/* ── Dropdown overlay ── */
+.theme-dropdown-overlay .ant-dropdown-arrow { display: none; }
+.theme-dropdown-overlay .ant-dropdown-menu  { padding: 0; background: transparent; box-shadow: none; }
+
+/* ── Panel shell ── */
+.tc-panel {
+  width: 400px;
+  max-height: calc(100vh - 80px);
+  border-radius: 18px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.20),
+    0 6px 20px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Accent stripe ── */
+.tc-stripe {
+  height: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Header ── */
+.tc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 13px;
+  flex-shrink: 0;
+}
+
+.tc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tc-header-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tc-header-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.tc-header-sub {
+  font-size: 11px;
+  margin-top: 1px;
+}
+
+.tc-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.tc-icon-btn:hover { opacity: 0.7; transform: rotate(-30deg); }
+
+/* ── Mini preview ── */
+.tc-preview-shell {
+  padding: 0 14px 12px;
+}
+
+.tc-preview {
+  display: flex;
+  height: 100px;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-radius 0.25s ease;
+}
+
+.tc-preview-sb {
+  width: 48px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 7px;
+  transition: background 0.3s ease;
+}
+
+/* ── Tab bar ── */
+.tc-tabbar {
+  display: flex;
+  flex-shrink: 0;
+  padding: 0 14px;
+  gap: 2px;
+}
+
+.tc-tab {
+  flex: 1;
+  height: 40px;
+  background: none;
+  border: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-family-base);
+  transition: color 0.18s ease, border-color 0.18s ease;
+  outline: none;
+  margin-bottom: -1px;
+}
+
+.tc-tab.is-active { font-weight: 700; }
+
+.tc-tab-icon {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Scrollable body ── */
+.tc-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.2) transparent;
+}
+
+.tc-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 16px;
+}
+
+/* ── Section ── */
+.tc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tc-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Color preset grid ── */
+.tc-presets {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.tc-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+  padding: 9px 2px 7px;
+  outline: none;
+  overflow: hidden;
+  transition: transform 0.18s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.tc-preset:hover {
+  background: rgba(0, 0, 0, 0.045);
+  transform: translateY(-1px);
+}
+
+.tc-preset-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  position: relative;
+}
+
+.tc-preset:hover .tc-preset-dot {
+  transform: scale(1.06);
+}
+
+.tc-preset-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+
+.tc-preset-name {
+  font-size: 9px;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: color 0.15s, font-weight 0.15s;
+}
+
+/* ── More Colors toggle ── */
+.tc-more-colors {
+  margin-top: 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.tc-more-colors:hover {
+  transform: translateY(-1px);
+}
+
+/* ── Custom color row ── */
+.tc-colorpick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.tc-swatch {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.tc-swatch:hover { transform: scale(1.08); }
+
+.tc-hex-wrap {
+  flex: 1;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 4px;
+}
+
+.tc-apply {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  outline: none;
+  flex-shrink: 0;
+  transition: filter 0.15s, transform 0.12s;
+}
+
+.tc-apply:hover { filter: brightness(0.88); transform: translateY(-1px); }
+
+.tc-custom-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  width: fit-content;
+  letter-spacing: 0.01em;
+}
+
+/* ── Option cards (layout tab) ── */
+.tc-card-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tc-option-card {
+  flex: 1;
+  border-radius: 12px;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px 10px;
+  gap: 0;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.tc-bar-preview {
+  width: 100%;
+  height: 14px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  transition: background 0.25s ease;
+}
+
+.tc-option-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 3px;
+}
+
+.tc-check-circle {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Font rows (type tab) ── */
+.tc-font-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  width: 100%;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+/* ── Shade explorer (colors tab) ── */
+.tc-shades {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.tc-shade {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+  outline: none;
+}
+
+.tc-shade:hover {
+  transform: scale(1.1);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.tc-shade-labels {
+  display: flex;
+  margin-top: 5px;
+}
+
+/* ── System tab — toggle row ── */
+.tc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+/* ── System tab — action buttons (export / import) ── */
+.tc-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  width: 100%;
+  text-align: left;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.tc-action-btn:hover {
+  opacity: 0.82;
+  transform: translateY(-1px);
+}
+
+.tc-action-btn:active {
+  transform: translateY(0);
+}
+
+/* ── System tab — active settings grid ── */
+.tc-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.tc-summary-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Reduced Motion — applied via data-motion="reduced" on <html>
+   Scoped to #root so Ant Design portals (Dropdown, Modal, Tooltip…) appended
+   directly to <body> keep their transitions — rc-motion relies on transitionend.
+══════════════════════════════════════════════════════════════════════════════ */
+[data-motion="reduced"] #root *,
+[data-motion="reduced"] #root *::before,
+[data-motion="reduced"] #root *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Elevated sidebar — applied via data-sidebar="elevated" on <html>
+══════════════════════════════════════════════════════════════════════════════ */
+[data-sidebar="elevated"] .sb-sider {
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+  position: relative;
+  z-index: 10;
+}
+
+[data-theme="dark"][data-sidebar="elevated"] .sb-sider {
+  box-shadow: 4px 0 28px rgba(0, 0, 0, 0.40);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Sidebar color/tone customization (Theme Center) — disabled.
+   The new sidebar (src/layouts/AppLayout/Sidebar.css) ships with a fixed white
+   light skin and dark-theme variant. Theme Center sidebar tone/color presets
+   no longer apply; reintroduce overrides keyed on `.sb-sider` if needed.
+══════════════════════════════════════════════════════════════════════════════ */
+/* (Theme Center sidebar overrides removed — see note above.) */
+
+
+/* ── HR Template editor — Quill rich text ───────────────────────────────── */
+.template-rte .ql-toolbar {
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--color-bg-subtle);
+}
+.template-rte .ql-container {
+  border: 1px solid var(--color-border);
+  border-radius: 0 0 8px 8px;
+  min-height: 220px;
+  font-size: 13px;
+  font-family: var(--font-family-base);
+}
+.template-rte--compact .ql-container { min-height: 120px; }
+.template-rte .ql-editor { min-height: 200px; }
+.template-rte--compact .ql-editor { min-height: 100px; }
+.template-rte .ql-editor.ql-blank::before {
+  color: var(--color-text-disabled);
+  font-style: normal;
+}
+
+/* Preview — clean HTML rendering */
+.template-preview-html {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
+}
+.template-preview-html * {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.template-preview-html p { margin: 0 0 12px; }
+.template-preview-html p:last-child { margin-bottom: 0; }
+.template-preview-html h1,
+.template-preview-html h2,
+.template-preview-html h3 {
+  font-weight: 700;
+  margin: 14px 0 8px;
+  line-height: 1.3;
+}
+.template-preview-html ul,
+.template-preview-html ol {
+  padding-left: 24px;
+  margin: 0 0 12px;
+}
+.template-preview-html li { margin-bottom: 4px; }
+.template-preview-html strong { font-weight: 700; }
+.template-preview-html em { font-style: italic; }
+.template-preview-html a { color: var(--color-primary); text-decoration: underline; }
+.template-preview-html blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 12px;
+  margin: 12px 0;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* ── Template editor — Collapse panel overrides ─────────────── */
+.ant-collapse.ant-collapse-borderless > .ant-collapse-item {
+  border: 1px solid var(--color-border);
+  border-radius: 12px !important;
+  margin-bottom: 12px;
+  background: var(--color-bg-surface);
+  overflow: hidden;
+}
+.ant-collapse.ant-collapse-borderless > .ant-collapse-item > .ant-collapse-header {
+  padding: 14px 18px;
+  align-items: center;
+}
+.ant-collapse.ant-collapse-borderless > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box {
+  padding: 4px 18px 18px;
+}
