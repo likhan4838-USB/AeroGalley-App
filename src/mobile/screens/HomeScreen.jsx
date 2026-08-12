@@ -3,6 +3,9 @@ import { T } from '../theme';
 import { MOCK_PRODUCTION_ORDERS, MOCK_QC_CHECKS, MOCK_DISPATCHES, MOCK_APPROVALS, MOCK_INVENTORY_ALERTS } from '../mockData';
 import { loadMobileFlights, loadMobileActiveOrders } from '../../lib/flight-orders-store';
 import { getAuthUser } from '@/lib/auth';
+// Read the greeting/avatar identity through the profile store, not the raw
+// session, so the topbar shows whatever the Profile screen shows.
+import { getProfileFields } from '@/lib/user-profile';
 // Same sector test the web dashboard splits its KPI breakdowns on.
 import { isDomesticSector } from '@/lib/sample-data';
 // Same source the web dashboard's "Delayed Flights" KPI reads (index.tsx) — the
@@ -623,7 +626,7 @@ export function HomeScreen({ nav }) {
   const visibleKPIs = expanded ? KPI_ROWS : KPI_ROWS.slice(0, 4);
   const alertBadgeCount = pendingApprovals + inventoryAlerts;
   const authUser = getAuthUser();
-  const userName = authUser?.name ?? 'Guest User';
+  const userName = getProfileFields().name;
   // Same avatar the web top bar shows — re-read each render, so it updates as
   // soon as you come back from the Profile screen after changing it.
   const userPhoto = authUser?.photoUrl;

@@ -37,7 +37,7 @@ const SETTINGS = [
 
 /*
  * The module sections, in menu order. Everything here is user-editable through
- * Edit; Settings is deliberately left out of the list so the doors to Theme,
+ * Customise list; Settings is deliberately left out of the list so the doors to Theme,
  * Bottom Bar and Profile can never be closed from inside the app.
  */
 const SECTIONS = [
@@ -55,8 +55,16 @@ const SECTIONS = [
  * staying invisible to whoever had already saved a list. The default settings
  * are therefore simply "nothing removed" — which is what Reset writes back.
  */
-const MORE_KEY = 'aerogalley-mobile-more-v1';
-const DEFAULT_HIDDEN = [];
+// v2: bumped when Approvals and Delay Management came off the default list.
+// A stored list wins over the default — by design, so a customisation is not
+// overwritten on every build — which meant anyone who had already opened this
+// screen kept seeing both. The new key retires those saved lists so the default
+// actually reaches existing installs; the cost is that earlier customisations
+// start over, which only a bump can achieve.
+const MORE_KEY = 'aerogalley-mobile-more-v2';
+// Off the menu out of the box. Both stay one tap away: Customise list shows
+// every module, removed ones included, so either can be added back.
+const DEFAULT_HIDDEN = ['approvals', 'delay-management'];
 const EDITABLE_KEYS = new Set(SECTIONS.flatMap((s) => s.items.map((i) => i.key)));
 
 function sanitizeHidden(keys) {
@@ -67,9 +75,18 @@ function sanitizeHidden(keys) {
   return clean;
 }
 
+/** True when `keys` is the default set, order ignored. */
+function isDefaultHidden(keys) {
+  return keys.length === DEFAULT_HIDDEN.length && DEFAULT_HIDDEN.every((k) => keys.includes(k));
+}
+
 function loadMoreHidden() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(MORE_KEY) || 'null'); } catch { /* ignore */ }
+  // Nothing stored yet ⇒ the default set. Only a genuinely absent list falls
+  // back: a stored [] is the user having deliberately added everything back,
+  // and re-hiding their modules on the next open would undo that choice.
+  if (!Array.isArray(saved)) return sanitizeHidden(DEFAULT_HIDDEN);
   return sanitizeHidden(saved);
 }
 
@@ -99,11 +116,16 @@ function SectionLabel({ children, right }) {
 
 function MenuRow({ item, onPress, editing = false, hidden = false, onToggle }) {
   const dimmed = editing && hidden;
+  // Opacity on the card itself dragged + Add down with it — a child cannot
+  // climb back above an ancestor's opacity, whatever it sets. So the fade is
+  // carried by the icon and text only, and the card keeps its recessed look
+  // from a muted surface, which leaves the button rendering at full strength.
+  const fade = { opacity: dimmed ? 0.55 : 1 };
   return (
     <div
       onClick={editing ? undefined : onPress}
       style={{
-        background: T.bgSurface,
+        background: dimmed ? T.bgSubtle : T.bgSurface,
         border: `1px solid ${T.border}`,
         borderRadius: T.radiusLg,
         padding: '12px 14px',
@@ -112,8 +134,9 @@ function MenuRow({ item, onPress, editing = false, hidden = false, onToggle }) {
         alignItems: 'center',
         gap: 12,
         cursor: editing ? 'default' : 'pointer',
-        boxShadow: T.shadowSm,
-        opacity: dimmed ? 0.55 : 1,
+        // Removed cards sit flat against the page; the shadow used to fade out
+        // with the rest of the card and would otherwise make them float again.
+        boxShadow: dimmed ? 'none' : T.shadowSm,
       }}
     >
       <div style={{
@@ -122,10 +145,11 @@ function MenuRow({ item, onPress, editing = false, hidden = false, onToggle }) {
         background: T.primaryLight,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 20, flexShrink: 0,
+        ...fade,
       }}>
         {item.icon}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, ...fade }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, fontFamily: T.fontBody }}>
           {item.label}
         </div>
@@ -164,7 +188,7 @@ export function MoreScreen({ nav, onLogout }) {
 
   const isHidden  = (key) => hidden.includes(key);
   const toggleKey = (key) => setHidden(isHidden(key) ? hidden.filter((k) => k !== key) : [...hidden, key]);
-  const isDefault = hidden.length === DEFAULT_HIDDEN.length;
+  const isDefault = isDefaultHidden(hidden);
 
   // While editing, every module is listed so removed ones can be added back;
   // otherwise only the kept ones show, and an emptied section drops out.
@@ -181,9 +205,13 @@ export function MoreScreen({ nav, onLogout }) {
         background: editing ? T.primaryLight : T.bgSurface,
         border: `1px solid ${editing ? T.primary + '55' : T.border}`,
         color: editing ? T.primary : T.textSecondary,
+        whiteSpace: 'nowrap', flexShrink: 0,
       }}
     >
-      {editing ? 'Done' : 'Edit'}
+      {/* Not "Edit": nothing here is edited. The button turns on a mode where
+          each row gains + Add / ✕ Remove, so the label names that outcome —
+          which modules this menu lists — rather than a generic verb. */}
+      {editing ? 'Done' : 'Customise list'}
     </button>
   );
 

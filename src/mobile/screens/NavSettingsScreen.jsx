@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { T } from '../theme';
 import {
   NAV_CATALOGUE, MORE_TAB, navItem,
@@ -6,12 +7,70 @@ import {
 
 const BTN_BACK = { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: T.radiusFull, width: 32, height: 32, cursor: 'pointer', color: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
 
-function SectionLabel({ children, hint }) {
+/**
+ * One step of a preview-strip drag, kept pure so the slot maths can be reasoned
+ * about (and exercised) without a DOM.
+ *
+ * The strip lays every tile out at flex:1, so slots are equal width. `order` is
+ * the draggable keys only; `slots` counts the trailing More tile too, which is
+ * rendered but cannot be landed on — hence the clamp to the last real index.
+ *
+ * Returns the working order, the index the held tile now occupies, and the
+ * offset from that slot's centre so the tile tracks the finger.
+ */
+export function previewDragStep({ left, width, order, index, clientX }) {
+  const slotW = width / (order.length + 1);
+  const raw = Math.floor((clientX - left) / slotW);
+  const target = Math.max(0, Math.min(order.length - 1, raw));
+
+  let next = order;
+  if (target !== index) {
+    next = [...order];
+    const [held] = next.splice(index, 1);
+    next.splice(target, 0, held);
+  }
+  return { order: next, index: target, dx: clientX - (left + slotW * (target + 0.5)) };
+}
+
+/** Double-headed arrow — the axis a preview tile actually travels on. */
+function DragGlyph() {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '18px 2px 8px' }}>
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M3.4 3.9 1.3 6l2.1 2.1M8.6 3.9 10.7 6 8.6 8.1M1.6 6h8.8"
+        stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * `hint` is the quiet grey counter the other sections use ("4 of 4", "bar is
+ * full"). `action` is the loud variant: an affordance the user is meant to
+ * notice and act on, so it gets the accent pill instead — passing `active`
+ * fills it in while the gesture is under way.
+ */
+function SectionLabel({ children, hint, action, active }) {
+  return (
+    // Baseline is right for the plain text hints; a pill needs centring on the
+    // label instead. Conditional so the other sections keep their exact rhythm.
+    <div style={{ display: 'flex', alignItems: action ? 'center' : 'baseline', justifyContent: 'space-between', gap: 8, margin: '18px 2px 8px' }}>
       <span style={{ fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
         {children}
       </span>
+      {action && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+          fontSize: 10.5, fontWeight: 800, fontFamily: T.fontBody,
+          textTransform: 'uppercase', letterSpacing: '0.04em',
+          color: active ? '#fff' : T.primary,
+          background: active ? T.primary : T.primaryLight,
+          border: `1px solid ${active ? T.primary : T.primary + '55'}`,
+          borderRadius: T.radiusFull, padding: '4px 10px', lineHeight: 1.35,
+          transition: 'background 140ms ease, color 140ms ease',
+        }}>
+          <DragGlyph />
+          {action}
+        </span>
+      )}
       {hint && <span style={{ fontSize: 10, color: T.textDisabled, fontFamily: T.fontBody }}>{hint}</span>}
     </div>
   );
@@ -54,6 +113,41 @@ export function NavSettingsScreen({ nav }) {
     nav.setNavTabs(next);
   };
 
+  // ── Drag-to-reorder on the preview strip ───────────────────────────────────
+  // Pointer events, not HTML5 drag-and-drop: `draggable` never fires on touch,
+  // and this bar is dragged with a thumb. Pointer events cover mouse and touch
+  // through one path, and pointer capture keeps the moves coming even when the
+  // finger outruns the tile it started on.
+  //
+  // The working order lives in local state and is committed on release, so a
+  // drag across four slots is one nav write, not one per pixel of travel.
+  const stripRef = useRef(null);
+  const [drag, setDrag] = useState(null); // { key, order, index, dx, moved }
+  const previewKeys = drag ? drag.order : tabs;
+
+  const onTileDown = (e, i, key) => {
+    // More is pinned to the end of the bar, so it is not a drag handle.
+    if (key === 'more' || tabs.length < 2) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDrag({ key, order: tabs, index: i, dx: 0, moved: false, pointerId: e.pointerId });
+  };
+
+  const onTileMove = (e, key) => {
+    if (!drag || drag.key !== key || !stripRef.current) return;
+    const rect = stripRef.current.getBoundingClientRect();
+    const step = previewDragStep({
+      left: rect.left, width: rect.width,
+      order: drag.order, index: drag.index, clientX: e.clientX,
+    });
+    setDrag({ ...drag, ...step, moved: true });
+  };
+
+  const endDrag = (commit) => {
+    if (!drag) return;
+    if (commit && drag.order.some((k, i) => k !== tabs[i])) nav.setNavTabs(drag.order);
+    setDrag(null);
+  };
+
   const available = NAV_CATALOGUE.filter((i) => !tabs.includes(i.key));
   const groups = available.reduce((acc, i) => {
     (acc[i.group] = acc[i.group] || []).push(i);
@@ -74,29 +168,65 @@ export function NavSettingsScreen({ nav }) {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '2px 14px 24px' }}>
 
-        {/* Live preview — the real bar, rendered at rest */}
-        <SectionLabel>Preview</SectionLabel>
-        <div style={{
-          background: T.bgSurface, border: `1px solid ${T.border}`,
-          borderRadius: T.radiusLg, boxShadow: T.shadowSm, overflow: 'hidden',
-          display: 'flex', padding: '9px 0',
-        }}>
-          {[...tabs.map(navItem).filter(Boolean), MORE_TAB].map((item, i) => (
-            <div key={item.key} style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', gap: 3,
-              opacity: item.key === 'more' ? 0.5 : 1,
-            }}>
-              {item.icon(i === 0)}
-              <span style={{
-                fontSize: 9, fontFamily: T.fontBody, whiteSpace: 'nowrap',
-                fontWeight: i === 0 ? 700 : 500,
-                color: i === 0 ? T.primary : T.textTertiary,
-              }}>
-                {item.label}
-              </span>
-            </div>
-          ))}
+        {/* Live preview — the real bar, rendered at rest, and draggable */}
+        <SectionLabel
+          action={tabs.length > 1 ? (drag?.moved ? 'Release to place' : 'Drag to reorder') : undefined}
+          active={!!drag?.moved}
+        >
+          Preview
+        </SectionLabel>
+        <div
+          ref={stripRef}
+          style={{
+            background: T.bgSurface,
+            // Accent only while a tile is in hand — the strip stays a plain
+            // card at rest, so the highlight reads as live feedback.
+            border: `1px solid ${drag?.moved ? T.primary : T.border}`,
+            borderRadius: T.radiusLg, boxShadow: T.shadowSm, overflow: 'hidden',
+            display: 'flex', padding: '9px 0',
+            transition: 'border-color 140ms ease',
+          }}
+        >
+          {[...previewKeys.map(navItem).filter(Boolean), MORE_TAB].map((item, i) => {
+            const isMore = item.key === 'more';
+            const held = drag?.key === item.key && drag.moved;
+            const canDrag = !isMore && tabs.length > 1;
+            return (
+              <div
+                key={item.key}
+                onPointerDown={(e) => onTileDown(e, i, item.key)}
+                onPointerMove={(e) => onTileMove(e, item.key)}
+                onPointerUp={() => endDrag(true)}
+                // Fired when the browser takes the gesture over to scroll the
+                // list — abandon the drag rather than committing a half-move.
+                onPointerCancel={() => endDrag(false)}
+                style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 3,
+                  opacity: isMore ? 0.5 : 1,
+                  // A vertical swipe belongs to the scrolling list this strip
+                  // sits in; pan-y hands that axis back to the browser and
+                  // keeps the horizontal one — all a reorder needs — for us.
+                  touchAction: canDrag ? 'pan-y' : 'auto',
+                  userSelect: 'none', WebkitUserSelect: 'none',
+                  cursor: canDrag ? (held ? 'grabbing' : 'grab') : 'default',
+                  position: 'relative',
+                  zIndex: held ? 2 : 1,
+                  transform: held ? `translateX(${drag.dx}px) scale(1.06)` : 'none',
+                  filter: held ? 'drop-shadow(0 3px 6px rgba(0,0,0,0.28))' : 'none',
+                }}
+              >
+                {item.icon(i === 0)}
+                <span style={{
+                  fontSize: 9, fontFamily: T.fontBody, whiteSpace: 'nowrap',
+                  fontWeight: i === 0 ? 700 : 500,
+                  color: i === 0 ? T.primary : T.textTertiary,
+                }}>
+                  {item.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* ── On the bar ── */}
