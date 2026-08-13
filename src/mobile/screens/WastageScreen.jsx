@@ -13,10 +13,24 @@ import { activeItems } from '@/lib/sample-data';
 import { getAuthUser } from '@/lib/auth';
 
 const BTN_BACK = { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: T.radiusFull, width: 32, height: 32, cursor: 'pointer', color: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+// Top-bar action. Shared by "+ Sale" and "+ Log" so the pair reads as one set.
+const BTN_TOP = { background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.55)', borderRadius: T.radiusMd, height: 30, padding: '0 11px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: T.fontBody, flexShrink: 0 };
 const LABEL = { fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 };
 const INPUT = { width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, padding: '10px 12px', fontSize: 13, fontFamily: T.fontBody, outline: 'none', background: T.bgSurface, color: T.textPrimary };
 const CARD = { background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '12px 14px', marginBottom: 10, boxShadow: T.shadowSm };
 const SECTION = { fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '16px 2px 8px' };
+// The salvage-sale block, tinted with the approved/green accent so the one
+// method that RECOVERS money is visually distinct from the destructive ones —
+// the same signal the web gives it with its emerald panel.
+const SALE_CARD = { background: T.statusApprovedBg, border: `1px solid ${T.statusApproved}40`, borderRadius: T.radiusLg, padding: '12px 14px', marginBottom: 14 };
+
+/** Pill button for the sale block's mode pickers — tap targets, not a dropdown. */
+const chip = (on, bad) => ({
+  padding: '7px 12px', borderRadius: T.radiusFull,
+  border: `1px solid ${on ? T.primary : (bad ? T.statusRejected : T.border)}`,
+  background: on ? T.primary : T.bgSurface, color: on ? '#fff' : T.textTertiary,
+  fontSize: 11.5, fontWeight: 700, fontFamily: T.fontBody, cursor: 'pointer',
+});
 
 const WASTAGE_KEY = 'harvest-data-v1:wastage-entries';
 
@@ -29,8 +43,16 @@ const DISPOSAL_REASONS = [
 ];
 const DISPOSAL_METHODS = [
   'Incineration', 'Composting', 'Landfill Disposal', 'Sewage / Drain', 'Animal Feed',
-  'Third-party Disposal', 'Destroy', 'N/A',
+  'Third-party Disposal', 'Sell', 'Destroy', 'N/A',
 ];
+// "Sell" is the one method that recovers money rather than just destroying the
+// stock, so it carries a salvage-sale record: the web's WastageSaleDetails,
+// rendered there as the "Selling / Salvage Details" panel and totalled as the
+// "recovered" column in Wastage Analytics. These option lists are the ones
+// Damaged Product Sales uses, so a sale raised here reads identically on web.
+const SELL = 'Sell';
+const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'Mobile Banking', 'Cheque', 'Other'];
+const MOBILE_PROVIDERS = ['Bkash', 'Nagad', 'Other'];
 const UNITS = ['Kg', 'g', 'L', 'ml', 'Pcs', 'Units', 'Box', 'Tray', 'Bag'];
 const ITEM_NAMES = activeItems.map((i) => i.name);
 
@@ -45,6 +67,7 @@ const STATUS_KEYS = Object.keys(WSTATUS);
 const PENDING = ['Pending In-Charge', 'Pending GM', 'Pending Final'];
 
 const num = (v) => Number(v) || 0;
+const money = (n) => `৳ ${num(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const p2 = (n) => String(n).padStart(2, '0');
 const todayDate = () => { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
 const nowTime = () => { const d = new Date(); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
@@ -97,7 +120,7 @@ function Row({ label, value }) {
 
 export function WastageScreen({ nav }) {
   const [entries, setEntries] = useState(() => readEntries());
-  const [view, setView]     = useState('list');   // 'list' | 'detail' | 'log'
+  const [view, setView]     = useState('list');   // 'list' | 'detail' | 'log' | 'sale'
   const [activeId, setActiveId] = useState(null);
   const [query, setQuery]   = useState('');
   const [filter, setFilter] = useState('all');
@@ -134,14 +157,97 @@ export function WastageScreen({ nav }) {
   const [fCorrection, setFCorrection] = useState('');
   const [touched, setTouched] = useState(false);
 
+  // Salvage-sale fields — only collected, and only required, when the method is Sell.
+  const [fBuyer, setFBuyer] = useState('');
+  const [fSaleQty, setFSaleQty] = useState('');
+  const [fUnitPrice, setFUnitPrice] = useState('');
+  const [fPayMode, setFPayMode] = useState('');
+  const [fBankAcc, setFBankAcc] = useState('');
+  const [fProvider, setFProvider] = useState('');
+  const [fProviderOther, setFProviderOther] = useState('');
+  const [fMobNo, setFMobNo] = useState('');
+  const [fChequeNo, setFChequeNo] = useState('');
+  const [fOtherMethod, setFOtherMethod] = useState('');
+  const [fSaleRef, setFSaleRef] = useState('');
+  const [fSaleRemarks, setFSaleRemarks] = useState('');
+  // Whether the sale quantity has been set by hand — see `setQty` below.
+  const [saleQtyEdited, setSaleQtyEdited] = useState(false);
+
+  const isSell = fMethod === SELL;
+  const saleTotal = num(fSaleQty) * num(fUnitPrice);
+
+  const resetSale = () => {
+    setFBuyer(''); setFSaleQty(''); setFUnitPrice(''); setFPayMode('');
+    setFBankAcc(''); setFProvider(''); setFProviderOther(''); setFMobNo('');
+    setFChequeNo(''); setFOtherMethod(''); setFSaleRef(''); setFSaleRemarks('');
+    setSaleQtyEdited(false);
+  };
+
+  /**
+   * Sale quantity shadows the disposal quantity until the user types one of
+   * their own, so "sold the whole lot" — the usual case, and the only case the
+   * sale flow can pre-fill, since it opens before any quantity exists — needs
+   * no second entry. A partial sale is still a single edit away.
+   */
+  const setQty = (v) => {
+    setFQty(v);
+    if (isSell && !saleQtyEdited) setFSaleQty(v);
+  };
+
+  /**
+   * Picking Sell opens the sale block pre-filled with the disposal quantity —
+   * selling the whole disposed lot is the common case, so the usual path is to
+   * leave it alone. Leaving Sell clears the block so a stale buyer/price can
+   * never ride along on a method that recovers nothing.
+   */
+  const pickMethod = (m) => {
+    setFMethod(m);
+    if (m === SELL) { if (!fSaleQty) setFSaleQty(fQty); }
+    else resetSale();
+  };
+
+  /**
+   * Switching payment mode drops the previous mode's identifier, so a cheque
+   * number can't survive onto a cash sale and reach the record.
+   */
+  const pickPayMode = (m) => {
+    setFPayMode(m);
+    setFBankAcc(''); setFProvider(''); setFProviderOther(''); setFMobNo('');
+    setFChequeNo(''); setFOtherMethod('');
+  };
+
   const resetForm = () => {
     setFType(''); setFItem(''); setFQty(''); setFUnit('Kg'); setFBatch('');
     setFReason(''); setFReasonOther(''); setFReprocess('No'); setFMethod('');
     setFRootCause(''); setFCorrection(''); setTouched(false);
+    resetSale();
   };
 
+  /**
+   * A sale is the same disposal report with its method fixed to Sell — one
+   * record shape, one approval chain — so it reuses the log form rather than
+   * duplicating it. Only the entry point and the method field differ, which is
+   * why Sell no longer appears in the log form's method list.
+   */
+  const isSaleFlow = view === 'sale';
+  const openLog  = () => { resetForm(); setView('log'); };
+  const openSale = () => { resetForm(); setFMethod(SELL); setView('sale'); };
+
+  /** The identifier that makes a payment traceable, per mode. Cash needs none. */
+  const payDetailOk =
+    fPayMode === 'Cash' ? true
+    : fPayMode === 'Bank Transfer' ? !!fBankAcc.trim()
+    : fPayMode === 'Mobile Banking' ? !!fProvider && !!fMobNo.trim() && (fProvider !== 'Other' || !!fProviderOther.trim())
+    : fPayMode === 'Cheque' ? !!fChequeNo.trim()
+    : fPayMode === 'Other' ? !!fOtherMethod.trim()
+    : false;
+
+  const saleOk = !isSell || (
+    !!fBuyer.trim() && num(fSaleQty) > 0 && num(fUnitPrice) > 0 && !!fPayMode && payDetailOk
+  );
+
   const canLog = fType && fItem.trim() && num(fQty) > 0 && fReason
-    && (fReason !== 'Other' || fReasonOther.trim()) && fRootCause.trim();
+    && (fReason !== 'Other' || fReasonOther.trim()) && fRootCause.trim() && saleOk;
 
   /** The record the web writes — straight into the In-Charge approval stage. */
   const submitLog = () => {
@@ -178,24 +284,55 @@ export function WastageScreen({ nav }) {
       approvalSteps: [
         { step: 'Prepared By', by, designation: user?.role ?? 'Senior Executive-Food Safety & Hygiene', action: 'Submitted', at },
       ],
+      // Written only for Sell. The web treats the presence of `saleDetails` as
+      // the marker for its Selling / Salvage panel and sums `totalValue` into
+      // the analytics "recovered" column, so an absent key has to keep meaning
+      // "nothing was recovered" — hence the spread rather than an empty object.
+      ...(isSell ? {
+        saleDetails: {
+          buyer: fBuyer.trim(),
+          saleQty: num(fSaleQty),
+          unit: fUnit,
+          unitPrice: num(fUnitPrice),
+          totalValue: saleTotal,
+          paymentMode: fPayMode,
+          reference: fSaleRef.trim() || 'N/A',
+          remarks: fSaleRemarks.trim() || 'N/A',
+          saleDate: todayDate(),
+          // Mode-specific identifiers — each key is omitted unless its mode is
+          // the one chosen, matching the optional fields on the web's type.
+          ...(fPayMode === 'Bank Transfer' ? { bankAccountNo: fBankAcc.trim() } : {}),
+          ...(fPayMode === 'Mobile Banking' ? {
+            mobileProvider: fProvider === 'Other' ? fProviderOther.trim() : fProvider,
+            mobileNo: fMobNo.trim(),
+          } : {}),
+          ...(fPayMode === 'Cheque' ? { chequeNo: fChequeNo.trim() } : {}),
+          ...(fPayMode === 'Other' ? { otherMethod: fOtherMethod.trim() } : {}),
+        },
+      } : {}),
     };
     const next = [entry, ...entries];
     setEntries(next);
     writeEntries(next);
+    const sold = isSell ? ` ${money(saleTotal)} recovered.` : '';
     resetForm();
     setView('list');
-    flash(`${entry.id} submitted — Pending In-Charge approval.`);
+    flash(`${entry.id} submitted — Pending In-Charge approval.${sold}`);
   };
 
-  // ── Log Wastage ───────────────────────────────────────────────────────────
-  if (view === 'log') {
+  // ── Log Wastage / Record Sale ─────────────────────────────────────────────
+  if (view === 'log' || isSaleFlow) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: T.bgBase, overflow: 'hidden' }}>
         <div style={{ background: T.topbarGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <button onClick={() => { resetForm(); setView('list'); }} style={BTN_BACK}>←</button>
           <div>
-            <div style={{ fontFamily: T.fontBody, fontSize: 15, fontWeight: 700, color: '#fff' }}>Log Wastage</div>
-            <div style={{ fontFamily: T.fontBody, fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>Disposal report · goes for approval</div>
+            <div style={{ fontFamily: T.fontBody, fontSize: 15, fontWeight: 700, color: '#fff' }}>
+              {isSaleFlow ? 'Record Sale' : 'Log Wastage'}
+            </div>
+            <div style={{ fontFamily: T.fontBody, fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>
+              {isSaleFlow ? 'Salvage sale · goes for approval' : 'Disposal report · goes for approval'}
+            </div>
           </div>
         </div>
 
@@ -224,7 +361,7 @@ export function WastageScreen({ nav }) {
           <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
             <div style={{ flex: 1 }}>
               <div style={LABEL}>Disposal Qty *</div>
-              <input type="number" inputMode="decimal" value={fQty} onChange={(e) => setFQty(e.target.value)}
+              <input type="number" inputMode="decimal" value={fQty} onChange={(e) => setQty(e.target.value)}
                 placeholder="0"
                 style={{ ...INPUT, fontWeight: 700, borderColor: touched && !(num(fQty) > 0) ? T.statusRejected : T.border }} />
             </div>
@@ -269,13 +406,152 @@ export function WastageScreen({ nav }) {
             </div>
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <div style={LABEL}>Disposal Method</div>
-            <select value={fMethod} onChange={(e) => setFMethod(e.target.value)} style={{ ...INPUT, fontSize: 12 }}>
-              <option value="">Select a method…</option>
-              {DISPOSAL_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
+          {/* The sale flow fixes the method to Sell, so its picker is replaced by
+              a read-only marker. The log flow offers every other method — Sell
+              is reached through "+ Sale" instead, so it is filtered out here to
+              keep one way in. The stored value is "Sell" either way, which is
+              what the web reads. */}
+          {isSaleFlow ? (
+            <div style={{ marginBottom: 14 }}>
+              <div style={LABEL}>Disposal Method</div>
+              <div style={{ ...INPUT, display: 'flex', alignItems: 'center', gap: 7, background: T.statusApprovedBg, borderColor: `${T.statusApproved}40`, color: T.statusApproved, fontWeight: 700 }}>
+                <span style={{ fontSize: 13 }}>💰</span> Sell
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              <div style={LABEL}>Disposal Method</div>
+              <select value={fMethod} onChange={(e) => pickMethod(e.target.value)} style={{ ...INPUT, fontSize: 12 }}>
+                <option value="">Select a method…</option>
+                {DISPOSAL_METHODS.filter((m) => m !== SELL).map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Salvage sale — appears only for Sell, and every field in it is
+              required only while it is open (see `saleOk`). */}
+          {isSell && (
+            <div style={SALE_CARD}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <span style={{ fontSize: 14 }}>💰</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.statusApproved, fontFamily: T.fontBody }}>
+                  Selling / Salvage Details
+                </span>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={LABEL}>Sold To (Buyer / Party) *</div>
+                <input value={fBuyer} onChange={(e) => setFBuyer(e.target.value)}
+                  placeholder="Buyer or party name"
+                  style={{ ...INPUT, borderColor: touched && !fBuyer.trim() ? T.statusRejected : T.border }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={LABEL}>Sale Qty ({fUnit}) *</div>
+                  <input type="number" inputMode="decimal" value={fSaleQty}
+                    onChange={(e) => { setFSaleQty(e.target.value); setSaleQtyEdited(true); }}
+                    placeholder="0"
+                    style={{ ...INPUT, fontWeight: 700, borderColor: touched && !(num(fSaleQty) > 0) ? T.statusRejected : T.border }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={LABEL}>Unit Price (৳) *</div>
+                  <input type="number" inputMode="decimal" value={fUnitPrice} onChange={(e) => setFUnitPrice(e.target.value)}
+                    placeholder="0.00"
+                    style={{ ...INPUT, fontWeight: 700, borderColor: touched && !(num(fUnitPrice) > 0) ? T.statusRejected : T.border }} />
+                </div>
+              </div>
+
+              {/* Live total — the number the approver and the analytics both care
+                  about, so it is shown as it is typed rather than after submit. */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: T.bgSurface, border: `1px solid ${T.statusApproved}40`, borderRadius: T.radiusMd, padding: '10px 12px', marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Total Value
+                </span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.statusApproved, fontFamily: T.fontBody }}>
+                  {money(saleTotal)}
+                </span>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={LABEL}>Payment Mode *</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {PAYMENT_MODES.map((m) => (
+                    <button key={m} onClick={() => pickPayMode(m)} style={chip(fPayMode === m, touched && !fPayMode)}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {fPayMode === 'Bank Transfer' && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={LABEL}>Bank A/C No. *</div>
+                  <input value={fBankAcc} onChange={(e) => setFBankAcc(e.target.value)}
+                    placeholder="Account number" inputMode="numeric"
+                    style={{ ...INPUT, borderColor: touched && !fBankAcc.trim() ? T.statusRejected : T.border }} />
+                </div>
+              )}
+
+              {fPayMode === 'Mobile Banking' && (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={LABEL}>Provider *</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {MOBILE_PROVIDERS.map((p) => (
+                        <button key={p} onClick={() => { setFProvider(p); if (p !== 'Other') setFProviderOther(''); }}
+                          style={chip(fProvider === p, touched && !fProvider)}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    {fProvider === 'Other' && (
+                      <input value={fProviderOther} onChange={(e) => setFProviderOther(e.target.value)}
+                        placeholder="Provider name"
+                        style={{ ...INPUT, marginTop: 8, borderColor: touched && !fProviderOther.trim() ? T.statusRejected : T.border }} />
+                    )}
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={LABEL}>Mobile No. *</div>
+                    <input value={fMobNo} onChange={(e) => setFMobNo(e.target.value)}
+                      placeholder="01XXXXXXXXX" inputMode="tel"
+                      style={{ ...INPUT, borderColor: touched && !fMobNo.trim() ? T.statusRejected : T.border }} />
+                  </div>
+                </>
+              )}
+
+              {fPayMode === 'Cheque' && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={LABEL}>Cheque No. *</div>
+                  <input value={fChequeNo} onChange={(e) => setFChequeNo(e.target.value)}
+                    placeholder="Cheque number"
+                    style={{ ...INPUT, borderColor: touched && !fChequeNo.trim() ? T.statusRejected : T.border }} />
+                </div>
+              )}
+
+              {fPayMode === 'Other' && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={LABEL}>Payment Method *</div>
+                  <input value={fOtherMethod} onChange={(e) => setFOtherMethod(e.target.value)}
+                    placeholder="How was it paid?"
+                    style={{ ...INPUT, borderColor: touched && !fOtherMethod.trim() ? T.statusRejected : T.border }} />
+                </div>
+              )}
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={LABEL}>Reference</div>
+                <input value={fSaleRef} onChange={(e) => setFSaleRef(e.target.value)}
+                  placeholder="Receipt / voucher reference" style={INPUT} />
+              </div>
+
+              <div>
+                <div style={LABEL}>Remarks</div>
+                <textarea value={fSaleRemarks} onChange={(e) => setFSaleRemarks(e.target.value)} rows={2}
+                  placeholder="Anything worth noting about the sale"
+                  style={{ ...INPUT, resize: 'none' }} />
+              </div>
+            </div>
+          )}
 
           <div style={{ marginBottom: 14 }}>
             <div style={LABEL}>Root Cause *</div>
@@ -292,7 +568,7 @@ export function WastageScreen({ nav }) {
 
           <button onClick={submitLog} disabled={!canLog}
             style={{ width: '100%', padding: '13px 0', background: canLog ? T.buttonGradient : T.borderStrong, border: 'none', borderRadius: T.radiusMd, fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: T.fontBody, cursor: canLog ? 'pointer' : 'not-allowed', opacity: canLog ? 1 : 0.7 }}>
-            Submit For Approval
+            {isSaleFlow ? 'Submit Sale For Approval' : 'Submit For Approval'}
           </button>
           <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, textAlign: 'center', marginTop: 8 }}>
             Goes to In-Charge → GM Catering → Final Authorization.
@@ -336,6 +612,35 @@ export function WastageScreen({ nav }) {
             {e.returnRef && <Row label="Return Ref" value={e.returnRef} />}
             {e.stockItemName && <Row label="Stock Item" value={`${e.stockItemName}${e.previousStock != null ? ` · was ${e.previousStock}` : ''}`} />}
           </div>
+
+          {/* Mirrors the web's "Selling / Salvage Details" panel. `Row` hides
+              itself when a value is blank, so the mode-specific identifiers
+              below show up only for the mode the sale actually used. */}
+          {e.saleDetails && (
+            <>
+              <div style={SECTION}>Selling / Salvage</div>
+              <div style={{ ...CARD, background: T.statusApprovedBg, borderColor: `${T.statusApproved}40` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody }}>Total Recovered</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: T.statusApproved, fontFamily: T.fontBody }}>
+                    {money(e.saleDetails.totalValue)}
+                  </span>
+                </div>
+                <Row label="Sold To" value={e.saleDetails.buyer} />
+                <Row label="Sale Qty" value={`${num(e.saleDetails.saleQty).toLocaleString()} ${e.saleDetails.unit ?? ''}`.trim()} />
+                <Row label="Unit Price" value={money(e.saleDetails.unitPrice)} />
+                <Row label="Payment" value={e.saleDetails.paymentMode} />
+                <Row label="A/C No." value={e.saleDetails.bankAccountNo} />
+                <Row label="Provider" value={e.saleDetails.mobileProvider} />
+                <Row label="Mobile No." value={e.saleDetails.mobileNo} />
+                <Row label="Cheque No." value={e.saleDetails.chequeNo} />
+                <Row label="Method" value={e.saleDetails.otherMethod} />
+                <Row label="Reference" value={e.saleDetails.reference} />
+                <Row label="Sale Date" value={e.saleDetails.saleDate} />
+                <Row label="Remarks" value={e.saleDetails.remarks} />
+              </div>
+            </>
+          )}
 
           {(e.rootCause || e.correction) && (
             <>
@@ -423,10 +728,13 @@ export function WastageScreen({ nav }) {
             {kpis.total} report{kpis.total === 1 ? '' : 's'} · {kpis.pending} pending
           </div>
         </div>
-        <button onClick={() => { resetForm(); setView('log'); }}
-          style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.55)', borderRadius: T.radiusMd, height: 30, padding: '0 12px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: T.fontBody, flexShrink: 0 }}>
-          + Log
-        </button>
+        {/* Two ways in: a plain disposal, or a salvage sale. Same record and the
+            same approval chain — the sale route just arrives with its method and
+            sale block already set up. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <button onClick={openSale} style={BTN_TOP}>+ Sale</button>
+          <button onClick={openLog}  style={BTN_TOP}>+ Log</button>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 16px' }}>
@@ -464,7 +772,7 @@ export function WastageScreen({ nav }) {
 
         {sorted.length === 0 ? (
           <Empty icon="🗑️" text={entries.length === 0
-            ? 'No wastage reports yet. Tap “+ Log” to raise one.'
+            ? 'No wastage reports yet. Tap “+ Log” to raise one, or “+ Sale” to record a salvage sale.'
             : 'No reports match the current filter.'} />
         ) : sorted.map((e) => {
           const s = WSTATUS[e.status] ?? WSTATUS['Pending In-Charge'];
