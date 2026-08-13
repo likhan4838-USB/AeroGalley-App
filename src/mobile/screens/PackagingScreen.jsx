@@ -1,19 +1,26 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { T } from '../theme';
 import { KPICard } from '../components/KPICard';
 // Packaging on the phone, on the WEB's own record — the "packaging-allocations"
 // store routes/packaging.tsx works against.
 //
 // A row is an ALLOCATION: this production run, this flight, this quantity — not
-// a batch. Runs are created on the web (New Packaging) and signed off in
-// Approval Management; the phone works the packing floor itself: see what is
-// queued per flight, and mark labels Packaging Done as they are packed. The
-// lifecycle, the gating and the flight-order roll-up are the web's.
+// a batch. The phone now covers both ends of that record: New Packaging raises
+// runs against a flight (sized by the web's own planner — see packaging-plan.js)
+// and the packing floor marks their labels Packaging Done. Sign-off stays where
+// it has always been, in Approval Management; the lifecycle and the flight-order
+// roll-up are the web's.
 import {
   isPackaged, isAwaitingApproval, allocationItems,
+  existingRunAllocation, existingSetAllocation,
 } from '@/lib/packaging-allocations';
 import { getFlightOrders, updateFlightOrdersWhere } from '@/lib/flight-orders-store';
+import { INITIAL_PACKAGING_ROWS } from '@/routes/dispatch';
 import { useWorkflow } from '@/lib/workflow-store';
+import { mergePassedBatches } from '@/lib/packaging-batches';
+import { logAudit } from '@/lib/audit-log';
+import { getAuthUser } from '@/lib/auth';
+import { createPackagingPlanner } from '../packaging-plan';
 
 const BTN_BACK = { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: T.radiusFull, width: 32, height: 32, cursor: 'pointer', color: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
 const INPUT = { width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, padding: '10px 12px', fontSize: 13, fontFamily: T.fontBody, outline: 'none', background: T.bgSurface, color: T.textPrimary };
@@ -99,6 +106,69 @@ function LinkRow({ label, value, onOpen }) {
   );
 }
 
+/** A leg's load in words. Portions and meals are different units and must never
+ *  be added: a leg that takes only assembled meals reads "8 meals", not "0". */
+function loadLabel(load) {
+  const parts = [
+    load.portions > 0 ? `${load.portions.toLocaleString()} portions` : null,
+    load.meals > 0 ? `${load.meals.toLocaleString()} meals` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' + ') : 'nothing';
+}
+
+/** A tickable line in New Packaging — a production run, or an assembled meal.
+ *  A line already raised for this flight is LOCKED (padlock); one the kitchen
+ *  can't cover is BLOCKED (dash). Both are untickable, for opposite reasons. */
+function PickLine({ checked, onToggle, locked, blocked, title, sub, note, qty, unit }) {
+  const fixed = locked || blocked;
+  return (
+    <div onClick={fixed ? undefined : onToggle}
+      style={{
+        ...CARD, marginBottom: 8, padding: '11px 13px',
+        border: `1px solid ${checked ? T.primary : T.border}`,
+        background: checked ? T.primaryLight : T.bgSurface,
+        opacity: fixed ? 0.7 : 1, cursor: fixed ? 'default' : 'pointer',
+      }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        {fixed ? (
+          <span aria-hidden style={{ width: 18, flexShrink: 0, fontSize: 12, textAlign: 'center', marginTop: 1, color: T.textDisabled }}>
+            {locked ? '🔒' : '—'}
+          </span>
+        ) : (
+          <input type="checkbox" checked={checked} onChange={onToggle} onClick={(e) => e.stopPropagation()}
+            aria-label={`Package ${title}`}
+            style={{ width: 18, height: 18, accentColor: T.primary, cursor: 'pointer', marginTop: 1, flexShrink: 0 }} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, fontFamily: T.fontBody }}>{title}</span>
+            {qty != null && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.primary, fontFamily: T.fontBody, whiteSpace: 'nowrap' }}>
+                {qty.toLocaleString()} {unit}
+              </span>
+            )}
+          </div>
+          {sub && <div style={{ fontSize: 11.5, color: T.textTertiary, fontFamily: T.fontBody, marginTop: 3 }}>{sub}</div>}
+          {note && <div style={{ fontSize: 11, color: T.statusPending, fontFamily: T.fontBody, marginTop: 4 }}>{note}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Why a run can't contribute to this flight — the planner's own reasons, said
+ *  in the words the packer needs to act on. */
+function excludedReason(line) {
+  switch (line?.reason) {
+    case 'covered':    return `Another run already covers this dish${line.coveredBy ? ` — ${line.coveredBy}` : ''}.`;
+    case 'exhausted':  return 'Every portion of this run is already allocated.';
+    case 'reserved':   return "The whole pool goes into this flight's meal sets.";
+    case 'offservice': return `Cooked for ${line.offService?.join(', ')} — this flight doesn't serve it.`;
+    case 'unsized':    return "Not on this day's menu plan, so nothing sizes it for this flight.";
+    default:           return 'Nothing to package for this flight.';
+  }
+}
+
 export function PackagingScreen({ nav }) {
   const [allocations, setAllocations] = useState(() => readAllocations());
   const [view, setView]     = useState('list');   // 'list' | 'flight' | 'labels' | 'qc'
@@ -117,7 +187,21 @@ export function PackagingScreen({ nav }) {
   const flash = (m) => { setNotice(m); setTimeout(() => setNotice(''), 2800); };
 
   const { productionEntries } = useWorkflow();
-  const batches = useMemo(() => readJson(BATCH_KEY, []), []);
+  const [batches, setBatches] = useState(() => readJson(BATCH_KEY, []));
+  // A run that passed cooking-temp QC becomes a packaging batch. The web page
+  // does this merge when it mounts; without it here, a batch signed off ON THE
+  // PHONE would never reach New Packaging — the pool would only ever hold what
+  // the desk had already pulled in. Same library call, same store, and
+  // idempotent: mergePassedBatches hands back the very same list when there is
+  // nothing new, which is what stops this effect from looping.
+  useEffect(() => {
+    const qty = new Map(productionEntries.map((e) => [e.id, e.producedQty]));
+    const meta = new Map(productionEntries.map((e) => [e.id, { warehouseId: e.warehouseId, officeId: e.officeId }]));
+    const merged = mergePassedBatches(batches, (id) => qty.get(id) ?? 0, (id) => meta.get(id));
+    if (merged === batches) return;
+    setBatches(merged);
+    try { localStorage.setItem(BATCH_KEY, JSON.stringify(merged)); } catch { /* quota — non-fatal */ }
+  }, [productionEntries, batches]);
   const manifestRows = useMemo(() => readJson(ROWS_KEY, []), []);
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
   const peById = useMemo(() => new Map(productionEntries.map((p) => [p.id, p])), [productionEntries]);
@@ -126,6 +210,165 @@ export function PackagingScreen({ nav }) {
   const orderFor = (flight, date, orderNo) =>
     orders.find((o) => o.flight === flight && (!orderNo || o.orderNo === orderNo) && (!date || o.date === date))
     ?? orders.find((o) => o.flight === flight);
+
+  // ── New Packaging ───────────────────────────────────────────────────────────
+  // Raising a run is a three-tap job on the phone: pick the flight, check what
+  // the planner sized for it, start. The numbers are not the phone's own — the
+  // planner is the web page's algorithm, so a run raised here is the run the desk
+  // would have raised.
+  const [newSelected, setNewSelected]     = useState([]);      // `${legKey}::${lineId}`
+  const [includeReturn, setIncludeReturn] = useState(true);
+  const [showExcluded, setShowExcluded]   = useState(false);
+  const [pickQuery, setPickQuery]         = useState('');
+
+  // The manifest as the WEB sees it: the persisted store, falling back to the
+  // seed the web page defaults to, so the planner sizes the same way on a phone
+  // that has never had the desk page open.
+  const plannerRows = useMemo(
+    () => (manifestRows.length > 0 ? manifestRows : INITIAL_PACKAGING_ROWS),
+    [manifestRows],
+  );
+  const planner = useMemo(
+    () => createPackagingPlanner({
+      batches, allocations, productionEntries, flightOrders: orders, manifestRows: plannerRows,
+    }),
+    [batches, allocations, productionEntries, orders, plannerRows],
+  );
+
+  /** The legs the picker offers — only built while the picker is open; sizing
+   *  the whole order book is the most expensive thing this screen does. */
+  const legOptions = useMemo(
+    () => (view === 'new-flight' ? planner.legOptions() : []),
+    [view, planner],
+  );
+  const pickRows = legOptions.filter((o) => {
+    const q = pickQuery.trim().toLowerCase();
+    if (!q) return true;
+    return `${o.flight} ${o.orderNo ?? ''} ${o.sector ?? ''} ${o.date} ${o.airline ?? ''}`.toLowerCase().includes(q);
+  });
+
+  // The chosen leg is kept as the OPTION the picker sized, not just its key:
+  // re-deriving it would re-size the whole order book on every render of the
+  // lines view, which is the one thing this screen must not do.
+  const [newLeg, setNewLeg] = useState(null);
+  const newLegKey = newLeg?.key ?? '';
+  const newReturn = useMemo(
+    () => (newLeg ? planner.returnLegFor(newLeg) : null),
+    [planner, newLeg],
+  );
+  // Both halves are always SIZED, even when the return is unticked — that is what
+  // lets the round-trip card state exactly what unticking it leaves behind.
+  const planLegList = [...(newLeg ? [newLeg] : []), ...(newReturn ? [newReturn.leg] : [])];
+  const legPlans = useMemo(
+    () => (newLeg ? planner.planLegs(planLegList) : new Map()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [planner, newLegKey],
+  );
+  /** The legs actually being packaged — the return only when it is bundled. */
+  const newLegs = planLegList.filter((l) => includeReturn || l.key !== newReturn?.leg.key);
+
+  const legPool  = (leg) => legPlans.get(leg.key)?.pool ?? [];
+  const legPlan  = (leg) => legPlans.get(leg.key)?.plan ?? new Map();
+  const legSets  = (leg) => planner.usableSetLines(legPlans.get(leg.key)?.sets ?? []);
+  const setLineId = (l) => `set:${l.set.key}`;
+  const selKey   = (legKey, id) => `${legKey}::${id}`;
+  const isPicked = (legKey, id) => newSelected.includes(selKey(legKey, id));
+  const toggleLine = (legKey, id) => setNewSelected((prev) => (
+    prev.includes(selKey(legKey, id)) ? prev.filter((k) => k !== selKey(legKey, id)) : [...prev, selKey(legKey, id)]
+  ));
+  /** A run already packaged for this flight is locked, not re-offered — the web
+   *  leaves those out of the picker's selection too. */
+  const runLocked = (leg, b) => {
+    const a = existingRunAllocation(allocations, b.batch, leg.flight, leg.date);
+    return !!a && a.status !== 'Rejected';
+  };
+  const setLocked = (leg, l) => {
+    const a = existingSetAllocation(allocations, l.set.code, leg.flight, leg.date);
+    return !!a && a.status !== 'Rejected';
+  };
+  /** What a leg's plan comes to — contributing runs, portions and meals. */
+  const legLoad = (leg) => {
+    const plan = legPlan(leg);
+    let lines = 0, portions = 0;
+    for (const b of legPool(leg)) {
+      const q = plan.get(b.id)?.qty ?? 0;
+      if (q > 0) { lines++; portions += q; }
+    }
+    const meals = legSets(leg).filter((l) => l.qty > 0).reduce((s, l) => s + l.qty, 0);
+    return { lines, portions, meals };
+  };
+
+  // Preselect every contributing line once the lines view opens, and again when
+  // the round trip is toggled — the return's lines are sized against what the
+  // outbound left, so its ticks belong to that sizing.
+  useEffect(() => {
+    if (view !== 'new-lines' || !newLeg) return;
+    const next = [];
+    for (const leg of newLegs) {
+      for (const l of legSets(leg)) {
+        if (l.qty > 0 && !setLocked(leg, l)) next.push(selKey(leg.key, setLineId(l)));
+      }
+      for (const b of legPool(leg)) {
+        if ((legPlan(leg).get(b.id)?.qty ?? 0) > 0 && !runLocked(leg, b)) next.push(selKey(leg.key, b.id));
+      }
+    }
+    setNewSelected(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, newLegKey, includeReturn]);
+
+  /** Ticked AND able to contribute — the jobs the Start button will write. */
+  const newJobs = newLegs.map((leg) => ({
+    leg,
+    sets: legSets(leg).filter((l) => l.qty > 0 && isPicked(leg.key, setLineId(l)) && !setLocked(leg, l)),
+    lines: legPool(leg)
+      .filter((b) => isPicked(leg.key, b.id) && (legPlan(leg).get(b.id)?.qty ?? 0) > 0 && !runLocked(leg, b))
+      .map((b) => ({ batch: b, qty: legPlan(leg).get(b.id)?.qty ?? 0 })),
+  }));
+  const newCount = newJobs.reduce((s, j) => s + j.lines.length + j.sets.length, 0);
+  const newPortions = newJobs.reduce((s, j) => s + j.lines.reduce((n, l) => n + l.qty, 0), 0);
+  const newMeals = newJobs.reduce((s, j) => s + j.sets.reduce((n, l) => n + l.qty, 0), 0);
+
+  const openNewPackaging = () => {
+    setNewLeg(null); setNewSelected([]); setPickQuery('');
+    setIncludeReturn(true); setShowExcluded(false);
+    setView('new-flight');
+  };
+  const chooseLeg = (opt) => {
+    setNewLeg(opt); setNewSelected([]);
+    setIncludeReturn(true); setShowExcluded(false);
+    setView('new-lines');
+  };
+
+  /**
+   * Start packaging — queue every ticked line as a run. Approval is NOT required
+   * first: the run is created "Pending Approval" and signed off afterwards in
+   * Approval Management, which is what unlocks its labels. Both legs of a round
+   * trip are written in one action so the pair never splits.
+   */
+  const startNewPackaging = () => {
+    const jobs = newJobs.filter((j) => j.lines.length > 0 || j.sets.length > 0);
+    if (jobs.length === 0) {
+      flash('Tick at least one line to package.');
+      return;
+    }
+    const next = planner.buildAllocations(jobs, { now: stamp(), by: getAuthUser()?.name });
+    setAllocations(next);
+    writeAllocations(next);
+    logAudit({
+      action: 'Packaging run raised for approval',
+      module: 'Packaging',
+      entity: jobs.map((j) => j.leg.flight).join(' + '),
+      detail: jobs.map((j) => `${j.leg.flight}: ${[
+        ...j.sets.map((s) => `${s.set.code} × ${s.qty} sets`),
+        ...j.lines.map((l) => `${l.batch.batch} × ${l.qty}`),
+      ].join(', ')}`).join(' | '),
+    });
+    const where = jobs.map((j) => j.leg.flight).join(' + ');
+    setActiveKey(jobs[0].leg.key);
+    setPicked([]);
+    setView('flight');
+    flash(`${newCount} run${newCount === 1 ? '' : 's'} raised for ${where} — awaiting sign-off in Approval Management.`);
+  };
 
   // KPIs — the run states the web shows on this list.
   const pendingApproval = allocations.filter(isAwaitingApproval).length;
@@ -624,6 +867,288 @@ export function PackagingScreen({ nav }) {
     );
   }
 
+  // ── New Packaging · 1. pick the flight ────────────────────────────────────
+  // Every flight in the order book is listed, but the ones production can serve
+  // lead — and each one carries its OWN load, because the pool is shared across
+  // a whole order and says nothing about the leg you are about to pick.
+  if (view === 'new-flight') {
+    const SHOWN = 40;
+    const shown = pickRows.slice(0, SHOWN);
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: T.bgBase, overflow: 'hidden' }}>
+        <div style={{ background: T.topbarGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button onClick={() => setView('list')} style={BTN_BACK}>←</button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: T.fontBody, fontSize: 15, fontWeight: 700, color: '#fff' }}>New Packaging</div>
+            <div style={{ fontFamily: T.fontBody, fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>
+              Step 1 of 2 · Pick the flight
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 16px' }}>
+          <input value={pickQuery} onChange={(e) => setPickQuery(e.target.value)}
+            placeholder="Search flight, order, sector, date…" style={INPUT} />
+          <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, margin: '8px 2px 0' }}>
+            Flights with QC-passed production come first. The figure is what this leg's menu plan needs from what the kitchen has left.
+          </div>
+
+          {shown.length === 0 ? (
+            <Empty icon="🔍" text={pickQuery.trim()
+              ? `No flight matches "${pickQuery.trim()}".`
+              : 'No flights in Order Management yet.'} />
+          ) : shown.map((o) => {
+            const ready = o.portions > 0 || o.meals > 0;
+            return (
+              <div key={o.key} onClick={() => chooseLeg(o)} style={{ ...CARD, marginTop: 10, marginBottom: 0, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, fontFamily: T.fontBody }}>
+                      {o.flight}
+                      {o.sector && <span style={{ fontSize: 11, fontWeight: 400, color: T.textTertiary, marginLeft: 6 }}>{o.sector}</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, marginTop: 2 }}>
+                      {o.date}{o.etd ? ` · Dep ${o.etd}` : ''}{o.orderNo ? ` · ${o.orderNo}` : ''}
+                    </div>
+                  </div>
+                  <Chip
+                    label={ready ? 'Ready' : 'Nothing yet'}
+                    color={ready ? T.statusApproved : T.textTertiary}
+                    bg={ready ? T.statusApprovedBg : T.bgSubtle}
+                  />
+                </div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: ready ? T.primary : T.textDisabled, fontFamily: T.fontBody, marginTop: 7 }}>
+                  {ready
+                    ? [
+                        `${o.lines} line${o.lines === 1 ? '' : 's'}`,
+                        o.portions > 0 ? `${o.portions.toLocaleString()} portions` : null,
+                        o.meals > 0 ? `${o.meals.toLocaleString()} meals` : null,
+                      ].filter(Boolean).join(' · ')
+                    : o.runs > 0
+                      ? `${o.runs} run${o.runs === 1 ? '' : 's'} reach this flight, none sized for it`
+                      : 'No QC-passed production for this flight yet'}
+                </div>
+              </div>
+            );
+          })}
+
+          {pickRows.length > SHOWN && (
+            <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, textAlign: 'center', padding: '14px 8px 0' }}>
+              Showing {SHOWN} of {pickRows.length} flights — search to narrow it down.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── New Packaging · 2. check the lines and start ──────────────────────────
+  if (view === 'new-lines' && newLeg) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: T.bgBase, overflow: 'hidden' }}>
+        <div style={{ background: T.topbarGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button onClick={() => setView('new-flight')} style={BTN_BACK}>←</button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: T.fontBody, fontSize: 15, fontWeight: 700, color: '#fff' }}>
+              {newLeg.flight}{newLeg.sector ? ` · ${newLeg.sector}` : ''}
+            </div>
+            <div style={{ fontFamily: T.fontBody, fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>
+              Step 2 of 2 · {newLeg.date}{newLeg.etd ? ` · Dep ${newLeg.etd}` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 16px' }}>
+          {/* Round trip — the paired leg from Order Management, packaged with the
+              outbound unless it is unticked. Both loads are spelled out, because
+              that is what the decision to bundle actually turns on. */}
+          {newReturn && (() => {
+            const out = legLoad(newLeg);
+            const ret = legLoad(newReturn.leg);
+            return (
+              <div onClick={() => setIncludeReturn(!includeReturn)}
+                style={{ ...CARD, marginBottom: 10, background: T.statusInfoBg, border: `1px solid ${T.statusInfo}40`, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <input type="checkbox" checked={includeReturn} onChange={() => setIncludeReturn(!includeReturn)}
+                    onClick={(e) => e.stopPropagation()} aria-label="Package the return leg too"
+                    style={{ width: 18, height: 18, accentColor: T.statusInfo, cursor: 'pointer', marginTop: 1, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: T.textPrimary, fontFamily: T.fontBody }}>
+                      Round trip — returns as {newReturn.leg.flight}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textSecondary, fontFamily: T.fontBody, marginTop: 3 }}>
+                      {newReturn.leg.sector ?? ''}{newReturn.leg.etd ? ` · Dep ${newReturn.leg.etd}` : ''} · {newReturn.leg.date}
+                      {' · paired '}{newReturn.via === 'pairId' ? 'by Trip Ref' : `by order ${newLeg.orderNo ?? '#'}`}
+                    </div>
+                    {/* Each leg's load in its own units — portions and meals are
+                        never summed into one figure. */}
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: T.statusInfo, fontFamily: T.fontBody, marginTop: 5 }}>
+                      {newLeg.flight} {loadLabel(out)}
+                      {includeReturn ? ' + ' : ' · '}
+                      {newReturn.leg.flight} {loadLabel(ret)}
+                      {includeReturn && (out.portions + ret.portions > 0 || out.meals + ret.meals > 0) && (
+                        <> {' = '}{loadLabel({ portions: out.portions + ret.portions, meals: out.meals + ret.meals })}</>
+                      )}
+                    </div>
+                    {ret.portions === 0 && ret.meals === 0 ? (
+                      <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, marginTop: 4 }}>
+                        Nothing sizes against {newReturn.leg.flight} — bundling it changes nothing.
+                      </div>
+                    ) : !includeReturn ? (
+                      <div style={{ fontSize: 11, color: T.statusPending, fontFamily: T.fontBody, marginTop: 4 }}>
+                        {newReturn.leg.flight} stays unpackaged.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {newLegs.map((leg) => {
+            const isReturn = newLegs.length > 1 && leg.key === newReturn?.leg.key;
+            const fo = planner.findFlightOrder(leg);
+            const co = planner.findCrewOrder(leg);
+            const plan = legPlan(leg);
+            const pool = legPool(leg);
+            const sets = legSets(leg);
+            const load = legLoad(leg);
+            const contributes = (b) => (plan.get(b.id)?.qty ?? 0) > 0;
+            const runs = pool.filter(contributes);
+            const excluded = pool.filter((b) => !contributes(b));
+            return (
+              <div key={leg.key}>
+                {newLegs.length > 1 && (
+                  <div style={{ ...SECTION, color: T.primary }}>
+                    {isReturn ? 'Return leg' : 'Outbound leg'} — {leg.flight} · {loadLabel(load)}
+                  </div>
+                )}
+
+                {/* Flight facts, straight from the order book */}
+                <div style={{ ...CARD, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: T.textPrimary, fontFamily: T.fontBody, marginBottom: 2 }}>
+                    {leg.flight}{leg.sector ? ` · ${leg.sector}` : ''}
+                  </div>
+                  <Row label="Airline" value={fo?.airline ?? leg.airline} />
+                  <Row label="Order" value={leg.orderNo} />
+                  <Row label="Date · ETD" value={`${leg.date}${(fo?.etd ?? leg.etd) ? ` · ${fo?.etd ?? leg.etd}` : ''}`} />
+                  <Row label="PAX / Crew" value={fo ? `${fo.pax} / ${co?.crew ?? fo.crew ?? 0}` : ''} />
+                  <Row label="Special meals" value={fo ? String(fo.specialMeals ?? 0) : ''} />
+                  <Row label="This leg takes" value={loadLabel(load)} />
+                </div>
+
+                {/* Assembled meals first — their dishes are reserved out of the
+                    pools before the loose lines below are sized. */}
+                {sets.length > 0 && (
+                  <>
+                    <div style={SECTION}>Meal sets ({sets.filter((l) => l.qty > 0).length} of {sets.length} assemblable)</div>
+                    {sets.map((l) => {
+                      const locked = setLocked(leg, l);
+                      const blocked = l.qty <= 0;
+                      const dishes = l.parts.map((p) => p.item).join(', ');
+                      return (
+                        <PickLine
+                          key={setLineId(l)}
+                          checked={!blocked && !locked && isPicked(leg.key, setLineId(l))}
+                          onToggle={() => toggleLine(leg.key, setLineId(l))}
+                          locked={locked}
+                          blocked={blocked}
+                          title={`${l.set.code} · ${l.set.name}`}
+                          sub={dishes ? `${l.parts.length} dish${l.parts.length === 1 ? '' : 'es'} · ${dishes}` : 'No dishes on the menu plan'}
+                          qty={blocked ? undefined : l.qty}
+                          unit={l.qty === 1 ? 'meal' : 'meals'}
+                          note={locked ? 'Already raised for this flight.'
+                            : l.missing.length > 0 ? `No QC-passed run for ${l.missing.join(', ')} — the meal can't be assembled.`
+                            : l.short.length > 0 ? `Short on ${l.short.join(', ')} — only ${l.qty} of ${l.set.qty} assemblable.`
+                            : undefined}
+                        />
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* The dishes' own lines — already net of what the kits reserved */}
+                <div style={SECTION}>
+                  Production runs ({runs.length}){load.portions > 0 ? ` · ${load.portions.toLocaleString()} portions` : ''}
+                </div>
+                {runs.length === 0 && sets.length === 0 ? (
+                  <Empty icon="📦" text="Nothing has been produced for this flight yet — no QC-passed run reaches it." />
+                ) : runs.length === 0 ? (
+                  <div style={{ ...CARD, marginBottom: 8, fontSize: 11.5, color: T.textTertiary, fontFamily: T.fontBody }}>
+                    No loose dish line for this leg — everything the kitchen has goes into the meal sets above.
+                  </div>
+                ) : runs.map((b) => {
+                  const line = plan.get(b.id);
+                  const locked = runLocked(leg, b);
+                  const shared = planner.servedFlightCount(b);
+                  return (
+                    <PickLine
+                      key={b.id}
+                      checked={!locked && isPicked(leg.key, b.id)}
+                      onToggle={() => toggleLine(leg.key, b.id)}
+                      locked={locked}
+                      title={b.item}
+                      sub={`Run ${b.batch} · ${planner.remainingOf(b).toLocaleString()} of the day's output still free`}
+                      qty={line?.qty ?? 0}
+                      unit={(line?.qty ?? 0) === 1 ? 'portion' : 'portions'}
+                      note={locked ? 'Already raised for this flight.'
+                        : shared > 1 ? `This run also feeds ${shared - 1} other flight${shared === 2 ? '' : 's'} — only this leg's share is taken.`
+                        : undefined}
+                    />
+                  );
+                })}
+
+                {/* Runs that reach the flight but contribute nothing — hidden by
+                    default, with the reason on each one when opened. */}
+                {excluded.length > 0 && (
+                  <>
+                    <button onClick={() => setShowExcluded(!showExcluded)}
+                      style={{ width: '100%', padding: '10px 0', marginTop: 2, background: 'none', border: `1px dashed ${T.borderStrong}`, borderRadius: T.radiusMd, fontSize: 11.5, fontWeight: 700, color: T.textTertiary, fontFamily: T.fontBody, cursor: 'pointer' }}>
+                      {showExcluded ? 'Hide' : 'Show'} {excluded.length} run{excluded.length === 1 ? '' : 's'} that can't contribute
+                    </button>
+                    {showExcluded && (
+                      <div style={{ marginTop: 8 }}>
+                        {excluded.map((b) => (
+                          <PickLine key={b.id} blocked title={b.item}
+                            sub={`Run ${b.batch}`} note={excludedReason(plan.get(b.id))} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{ fontSize: 11, color: T.textTertiary, fontFamily: T.fontBody, padding: '14px 4px 0', lineHeight: 1.5 }}>
+            {newCount > 0 && (
+              <b style={{ color: T.textSecondary }}>
+                Ticked: {newCount} line{newCount === 1 ? '' : 's'}
+                {newPortions > 0 ? ` · ${newPortions.toLocaleString()} portions` : ''}
+                {newMeals > 0 ? ` · ${newMeals.toLocaleString()} meals` : ''}.{' '}
+              </b>
+            )}
+            Starting queues these lines as packaging runs. They wait for sign-off in Approval Management before labels can be printed — the same gate as the web.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, padding: '10px 14px', background: T.bgSurface, borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+          <button onClick={() => setNewSelected(newCount > 0 ? [] : newLegs.flatMap((leg) => [
+            ...legSets(leg).filter((l) => l.qty > 0 && !setLocked(leg, l)).map((l) => selKey(leg.key, setLineId(l))),
+            ...legPool(leg).filter((b) => (legPlan(leg).get(b.id)?.qty ?? 0) > 0 && !runLocked(leg, b)).map((b) => selKey(leg.key, b.id)),
+          ]))}
+            style={{ flex: 1, padding: '13px 0', background: 'none', border: `2px solid ${T.borderStrong}`, borderRadius: T.radiusMd, fontSize: 13, fontWeight: 700, color: T.textSecondary, fontFamily: T.fontBody, cursor: 'pointer' }}>
+            {newCount > 0 ? 'Clear' : 'Select all'}
+          </button>
+          <button onClick={startNewPackaging} disabled={newCount === 0}
+            style={{ flex: 2, padding: '13px 0', background: newCount ? T.buttonGradient : T.borderStrong, border: 'none', borderRadius: T.radiusMd, fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: T.fontBody, cursor: newCount ? 'pointer' : 'not-allowed', opacity: newCount ? 1 : 0.7 }}>
+            Start Packaging{newCount ? ` (${newCount})` : ''}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Flight detail ─────────────────────────────────────────────────────────
   if (view === 'flight' && activeGroup) {
     const g = activeGroup;
@@ -716,12 +1241,17 @@ export function PackagingScreen({ nav }) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: T.bgBase, overflow: 'hidden' }}>
       <div style={{ background: T.topbarGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <button onClick={() => nav.goBack()} style={BTN_BACK}>←</button>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.fontBody, fontSize: 15, fontWeight: 700, color: '#fff' }}>Packaging</div>
           <div style={{ fontFamily: T.fontBody, fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>
             {groups.length} flight{groups.length === 1 ? '' : 's'} · {inPackaging} to pack
           </div>
         </div>
+        {/* Raise a run from the floor — the web's New Packaging, on the phone. */}
+        <button onClick={openNewPackaging}
+          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '8px 13px', borderRadius: T.radiusFull, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: T.fontBody, cursor: 'pointer' }}>
+          <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span> New
+        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 16px' }}>
@@ -759,7 +1289,7 @@ export function PackagingScreen({ nav }) {
 
         {groups.length === 0 ? (
           <Empty icon="📦" text={allocations.length === 0
-            ? 'No packaging runs yet. Runs are started from New Packaging on the web.'
+            ? 'No packaging runs yet. Tap + New to raise one against a flight.'
             : 'No packaging runs match the current filter.'} />
         ) : groups.map((g) => {
           const toPack = g.allocations.filter((a) => a.status === 'In Packaging').length;
